@@ -156,7 +156,7 @@ public class PaymentScheduleService {
                     "No hay ejercicio fiscal abierto para " + payDate + ".");
         }
         String entryId = createPaymentEntry(companyId, fiscalYearId, dd,
-                treasuryId, counterId, payDate);
+                treasuryId, counterId, payDate, req.concept());
 
         jdbc.update("""
                 UPDATE invoice_due_dates
@@ -358,7 +358,8 @@ public class PaymentScheduleService {
     // ====================================================================
 
     private String createPaymentEntry(String companyId, String fiscalYearId, DueDate dd,
-                                        String treasuryId, String counterId, LocalDate payDate) {
+                                        String treasuryId, String counterId, LocalDate payDate,
+                                        String customConcept) {
         Integer max = jdbc.queryForObject("""
                 SELECT COALESCE(MAX(entry_number), 0) FROM journal_entries
                  WHERE company_id = ? AND fiscal_year_id = ?
@@ -366,7 +367,13 @@ public class PaymentScheduleService {
         int entryNumber = (max == null ? 0 : max) + 1;
         String entryId = UUID.randomUUID().toString();
         boolean sales = "SALES".equals(dd.invoiceKind());
+        // COB-3 — concepto del asesor si lo escribió; si no, el automático de
+        // siempre. journal_entries.concept es VARCHAR(240) (V2), de ahí el corte.
         String concept = (sales ? "Cobro vto. " : "Pago vto. ") + dd.seq();
+        if (customConcept != null && !customConcept.isBlank()) {
+            concept = customConcept.trim();
+            if (concept.length() > 240) concept = concept.substring(0, 240);
+        }
 
         jdbc.update("""
                 INSERT INTO journal_entries (
@@ -504,5 +511,12 @@ public class PaymentScheduleService {
 
     public record DueDateRequest(LocalDate dueDate, BigDecimal amount, String notes) {}
 
-    public record PayRequest(String treasuryAccountCode, LocalDate paidDate, String paymentMethod) {}
+    /**
+     * COB-3 — {@code concept} es OPCIONAL: si viene en blanco (o el cliente es
+     * antiguo y no lo manda), el asiento sigue llevando el concepto automático
+     * de siempre ("Cobro vto. N" / "Pago vto. N"). Petición de Benjamin
+     * (2026-09-05): el asesor necesita poder decir QUÉ está cobrando.
+     */
+    public record PayRequest(String treasuryAccountCode, LocalDate paidDate,
+                             String paymentMethod, String concept) {}
 }

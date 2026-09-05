@@ -7286,6 +7286,12 @@ public final class I18n {
             case "duedates.pay.cash" -> "Cash (570)";
             case "duedates.pay.date" -> "Payment date";
             case "duedates.pay.method" -> "Method";
+            // COB-2 / COB-3 — cobro desde el listado de asientos archivados
+            // y concepto editable del asiento de cobro/pago.
+            case "duedates.hint.no_invoice" -> "This entry has no linked invoice (it was keyed in as a manual journal entry), so it has no due-date schedule. Collect it with a manual entry from Accounting.";
+            case "duedates.hint.select" -> "Select a posted entry that came from an invoice.";
+            case "duedates.pay.concept" -> "Concept";
+            case "duedates.pay.concept.hint" -> "Text that will appear on the collection/payment journal entry. Edit it if the default one does not say enough.";
             case "duedates.fail" -> "Could not complete the due-date operation.";
             case "duedates.edit.title" -> "Edit due-date schedule";
             case "duedates.edit.hint" -> "The sum of the due dates must match the invoice total ({t}).";
@@ -8676,6 +8682,12 @@ public final class I18n {
             case "duedates.pay.cash" -> "Caja (570)";
             case "duedates.pay.date" -> "Fecha de pago";
             case "duedates.pay.method" -> "Método";
+            // COB-2 / COB-3 — cobro desde el listado de asientos archivados
+            // y concepto editable del asiento de cobro/pago.
+            case "duedates.hint.no_invoice" -> "Este asiento no tiene factura enlazada (se metió como asiento manual), así que no tiene cuadro de vencimientos. Cóbralo con un asiento desde Contabilidad.";
+            case "duedates.hint.select" -> "Selecciona un asiento validado que venga de una factura.";
+            case "duedates.pay.concept" -> "Concepto";
+            case "duedates.pay.concept.hint" -> "Texto que llevará el asiento de cobro/pago. Cámbialo si el que viene por defecto no dice lo suficiente.";
             case "duedates.fail" -> "No se pudo completar la operación de vencimientos.";
             case "duedates.edit.title" -> "Editar cuadro de vencimientos";
             case "duedates.edit.hint" -> "La suma de los vencimientos debe cuadrar con el total de la factura ({t}).";

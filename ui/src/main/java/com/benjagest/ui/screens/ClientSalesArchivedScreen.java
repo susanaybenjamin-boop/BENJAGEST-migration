@@ -31,6 +31,13 @@ public class ClientSalesArchivedScreen extends ScreenBase {
         void importPdfsAuto(String selfTaxId);
         void openRecurringEditorFromInvoice(String kind, String partyNif, String partyName,
                                             java.math.BigDecimal total, LocalDate invoiceDate);
+        /**
+         * COB-2 — abre el cuadro de vencimientos (cobro) de la factura de venta
+         * enlazada al asiento. Es el MISMO diálogo que usa Facturación en modo
+         * empresario; el shell lo conserva porque lo comparten Ventas y Compras.
+         */
+        void openDueDatesDialog(String kind, String invoiceId, String partyName,
+                                java.math.BigDecimal total);
     }
 
     private final AccountingApiClient accountingApiClient;
@@ -287,11 +294,42 @@ public class ClientSalesArchivedScreen extends ScreenBase {
                     sel.entryDate());
         });
 
+        // COB-2 — Cobrar la venta validada. Hasta ahora el asesor podía importar
+        // la factura y validarla, pero no cobrarla: tenía que irse a Facturación.
+        // El asiento importado por PDF queda enlazado a su factura
+        // (source_type=SALES_INVOICE + source_id), así que reutilizamos el mismo
+        // cuadro de vencimientos del modo empresario sin duplicar nada.
+        //
+        // Solo se habilita si HAY factura enlazada: una venta metida como asiento
+        // manual no tiene fila en sales_invoices y por tanto no puede tener cuadro
+        // de vencimientos (decisión Benjamin 2026-09-05). En ese caso el tooltip
+        // explica por qué está apagado en lugar de dejar al asesor adivinando.
+        Button collectBtn = new Button(t("duedates.action.open_sales"));
+        collectBtn.setGraphic(icon("fas-calendar-check"));
+        collectBtn.setDisable(true);
+        collectBtn.setTooltip(new Tooltip(t("duedates.hint.select")));
+        table.getSelectionModel().selectedItemProperty().addListener((o, ov, nv) -> {
+            boolean posted = nv != null && "POSTED".equalsIgnoreCase(nv.status());
+            boolean linked = nv != null && "SALES_INVOICE".equals(nv.sourceType())
+                    && nv.sourceId() != null && !nv.sourceId().isBlank();
+            collectBtn.setDisable(!(posted && linked));
+            collectBtn.setTooltip(new Tooltip(
+                    posted && !linked ? t("duedates.hint.no_invoice")
+                            : t("duedates.hint.select")));
+        });
+        collectBtn.setOnAction(ev -> {
+            var sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null || sel.sourceId() == null || sel.sourceId().isBlank()) return;
+            // El listado archivado no trae el nombre del cliente (son asientos):
+            // el concepto es el mejor rótulo disponible para el título del diálogo.
+            host.openDueDatesDialog("SALES", sel.sourceId(), sel.concept(), sel.totalDebit());
+        });
+
         HBox filtersRow = new HBox(8,
                 new Label(t("client.filter.search")), search,
                 new Label(t("client.filter.status")), statusFilter,
                 new Label(t("client.filter.type")), typeFilter,
-                spacer, makeRecurringBtnSales, refresh, importBtn);
+                spacer, collectBtn, makeRecurringBtnSales, refresh, importBtn);
         filtersRow.setAlignment(Pos.CENTER_LEFT);
 
         com.benjagest.ui.support.RefreshBus.subscribe(

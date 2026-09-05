@@ -1661,7 +1661,10 @@ public class AccountingApiClient {
                 bdField(json, "totalDebit"),
                 bdField(json, "totalCredit"),
                 intField(json, "numLines"),
-                strField(json, "sourcePdfSha256"));
+                strField(json, "sourcePdfSha256"),
+                // COB-1 — el backend ya lo enviaba (JournalQueryService.diary
+                // selecciona je.source_id); solo faltaba leerlo aqui.
+                strField(json, "sourceId"));
     }
 
     private JournalEntryDetail parseEntryDetail(String json) {

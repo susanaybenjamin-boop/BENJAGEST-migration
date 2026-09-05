@@ -48,7 +48,14 @@ public final class AccountingModels {
             /** SHA-256 del PDF importado. Usado para detectar duplicados
              *  en la UI (2+ asientos con mismo SHA = mismo PDF metido
              *  varias veces). null si el asiento no viene de PDF. */
-            String sourcePdfSha256
+            String sourcePdfSha256,
+            /** COB-1 — id del documento origen del asiento cuando lo hay:
+             *  factura de venta (sourceType SALES_INVOICE) o de compra
+             *  (PURCHASE_INVOICE). El backend ya lo devolvia; la UI no lo
+             *  parseaba. Es lo que permite abrir el cuadro de vencimientos
+             *  (cobrar/pagar) desde el listado de asientos archivados.
+             *  null en asientos manuales y en los que no tienen documento. */
+            String sourceId
     ) {
         /** Constructor de compatibilidad con callsites antiguos. */
         public DiaryEntry(String id, int entryNumber, LocalDate entryDate,
@@ -58,7 +65,7 @@ public final class AccountingModels {
                           int numLines) {
             this(id, entryNumber, entryDate, concept, sourceType, status,
                     autoProposed, proposedConfidence, totalDebit, totalCredit,
-                    numLines, null);
+                    numLines, null, null);
         }
     }
 
