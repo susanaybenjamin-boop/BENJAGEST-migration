@@ -66,7 +66,10 @@ public class AccountingApiClient {
                 decField(json, "vatCharged"),
                 decField(json, "vatBorne"),
                 decField(json, "model303Estimated"),
-                intField(json, "draftCount"));
+                intField(json, "draftCount"),
+                // M130-1 — pago fraccionado IRPF estimado + si aplica al cliente.
+                decField(json, "model130Estimated"),
+                boolField(json, "model130Applicable"));
     }
 
     /**
@@ -127,7 +130,9 @@ public class AccountingApiClient {
             java.math.BigDecimal vatCharged,
             java.math.BigDecimal vatBorne,
             java.math.BigDecimal model303Estimated,
-            int draftCount) {}
+            int draftCount,
+            java.math.BigDecimal model130Estimated,
+            boolean model130Applicable) {}
 
     private java.math.BigDecimal decField(String json, String field) {
         java.util.regex.Matcher m = java.util.regex.Pattern
@@ -1661,7 +1666,10 @@ public class AccountingApiClient {
                 bdField(json, "totalDebit"),
                 bdField(json, "totalCredit"),
                 intField(json, "numLines"),
-                strField(json, "sourcePdfSha256"));
+                strField(json, "sourcePdfSha256"),
+                // COB-1 — el backend ya lo enviaba (JournalQueryService.diary
+                // selecciona je.source_id); solo faltaba leerlo aqui.
+                strField(json, "sourceId"));
     }
 
     private JournalEntryDetail parseEntryDetail(String json) {

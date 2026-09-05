@@ -4896,27 +4896,50 @@ public class BenjagestUiApplication extends Application
         method.setCellFactory(lv -> methodCell());
         method.setMaxWidth(Double.MAX_VALUE);
 
+        // COB-3 — concepto del asiento de cobro/pago, editable. Hasta ahora lo
+        // fijaba el backend y el asesor no podía decir QUÉ estaba cobrando.
+        // Se prerrellena con EXACTAMENTE el texto que generaba el backend
+        // (PaymentScheduleService.createPaymentEntry), así quien no lo toque
+        // obtiene el mismo asiento de siempre. El texto va a BD, por eso está
+        // en español como el resto de conceptos contables.
+        TextField conceptField = new TextField(
+                ("SALES".equals(dd.invoiceKind()) ? "Cobro vto. " : "Pago vto. ") + dd.seq());
+        conceptField.setMaxWidth(Double.MAX_VALUE);
+
         GridPane g = new GridPane();
         g.setHgap(8); g.setVgap(8);
         g.addRow(0, new Label(t("duedates.col.amount")), new Label(eur(dd.amount())));
         g.addRow(1, new Label(t("duedates.pay.treasury")), treasury);
         g.addRow(2, new Label(t("duedates.pay.date")), datePicker);
         g.addRow(3, new Label(t("duedates.pay.method")), method);
-        for (Node n : java.util.List.of(treasury, datePicker, method)) GridPane.setHgrow(n, Priority.ALWAYS);
+        g.addRow(4, new Label(t("duedates.pay.concept")), conceptField);
+        Label conceptHint = new Label(t("duedates.pay.concept.hint"));
+        conceptHint.setWrapText(true);
+        conceptHint.getStyleClass().add("settings-hint");
+        g.add(conceptHint, 1, 5);
+        for (Node n : java.util.List.of(treasury, datePicker, method, conceptField)) {
+            GridPane.setHgrow(n, Priority.ALWAYS);
+        }
         g.setPadding(new Insets(10));
         dlg.getDialogPane().setContent(g);
-        dlg.getDialogPane().setPrefWidth(420);
+        dlg.getDialogPane().setPrefWidth(460);
 
         dlg.showAndWait().ifPresent(bt -> {
             if (bt != okBt) return;
-            payDueDate(dd.id(), treasury.getValue(), datePicker.getValue(), method.getValue(), after);
+            payDueDate(dd.id(), treasury.getValue(), datePicker.getValue(), method.getValue(),
+                    conceptField.getText(), after);
         });
     }
 
     private void payDueDate(String id, String treasuryCode, LocalDate date, String method, Runnable after) {
+        payDueDate(id, treasuryCode, date, method, null, after);
+    }
+
+    private void payDueDate(String id, String treasuryCode, LocalDate date, String method,
+                            String concept, Runnable after) {
         Task<com.benjagest.ui.model.DueDateEntry> tk = new Task<>() {
             @Override protected com.benjagest.ui.model.DueDateEntry call() throws Exception {
-                return dueDateApi.pay(id, treasuryCode, date, method);
+                return dueDateApi.pay(id, treasuryCode, date, method, concept);
             }
         };
         tk.setOnSucceeded(e -> { after.run(); com.benjagest.ui.support.RefreshBus.emit(
@@ -11435,11 +11458,21 @@ public class BenjagestUiApplication extends Application
         Label model303Caption = kpiCardCaption();
         VBox model303Card = kpiCard(t("client.kpi.model_303"), model303Value, model303Caption);
 
+        // M130-1 — Modelo 130 estimado junto al 303. Solo se pinta si el cliente
+        // lo presenta (autónomo en estimación directa); el backend lo decide y
+        // manda model130Applicable. Arranca oculta y se enciende al cargar los
+        // datos, para no dejar un hueco vacío mientras tanto.
+        Label model130Value = kpiCardValue();
+        Label model130Caption = kpiCardCaption();
+        VBox model130Card = kpiCard(t("client.kpi.model_130"), model130Value, model130Caption);
+        model130Card.setVisible(false);
+        model130Card.setManaged(false);
+
         Label draftsValue = kpiCardValue();
         VBox draftsCard = kpiCard(t("client.kpi.drafts"), draftsValue, null);
 
         HBox cards = new HBox(10, salesCard, expensesCard,
-                vatChargedCard, vatBorneCard, model303Card, draftsCard);
+                vatChargedCard, vatBorneCard, model303Card, model130Card, draftsCard);
         cards.setFillHeight(true);
         for (Node c : cards.getChildren()) HBox.setHgrow(c, Priority.ALWAYS);
 
@@ -11474,12 +11507,21 @@ public class BenjagestUiApplication extends Application
                         : k.model303Estimated().signum() < 0
                                 ? t("client.kpi.model_303.to_refund")
                                 : t("client.kpi.model_303.neutral"));
+                model130Card.setVisible(k.model130Applicable());
+                model130Card.setManaged(k.model130Applicable());
+                model130Value.setText(formatMoney(k.model130Estimated()));
+                // El 130 nunca sale negativo (un trimestre en pérdidas se declara
+                // a 0 y se arrastra), así que solo hay dos leyendas posibles.
+                model130Caption.setText(k.model130Estimated().signum() > 0
+                        ? t("client.kpi.model_130.to_pay")
+                        : t("client.kpi.model_130.nothing"));
                 draftsValue.setText(String.valueOf(k.draftCount()));
             });
             task.setOnFailed(ev -> {
                 salesValue.setText("—"); expensesValue.setText("—");
                 vatChargedValue.setText("—"); vatBorneValue.setText("—");
-                model303Value.setText("—"); draftsValue.setText("—");
+                model303Value.setText("—"); model130Value.setText("—");
+                draftsValue.setText("—");
             });
             start(task, "client-kpis");
         };
@@ -13938,6 +13980,11 @@ public class BenjagestUiApplication extends Application
                     @Override public void openRecurringEditorFromInvoice(String kind, String partyNif,
                             String partyName, java.math.BigDecimal total, java.time.LocalDate invoiceDate) {
                         BenjagestUiApplication.this.openRecurringEditorFromInvoice(kind, partyNif, partyName, total, invoiceDate);
+                    }
+                    // COB-2 — mismo diálogo de vencimientos que Facturación/Compras.
+                    @Override public void openDueDatesDialog(String kind, String invoiceId,
+                            String partyName, java.math.BigDecimal total) {
+                        BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total);
                     }
                 }).buildTab(fromProp, toProp, selfTaxId);
     }

@@ -7029,6 +7029,11 @@ public final class I18n {
             case "client.kpi.model_303.to_pay" -> "to pay";
             case "client.kpi.model_303.to_refund" -> "to refund";
             case "client.kpi.model_303.neutral" -> "neutral";
+            // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
+            // estimacion directa). Acumulado del anio hasta el trimestre.
+            case "client.kpi.model_130" -> "MODEL 130 (est.)";
+            case "client.kpi.model_130.to_pay" -> "to pay, year to date";
+            case "client.kpi.model_130.nothing" -> "nothing to pay this quarter";
             case "client.kpi.drafts" -> "PENDING";
             case "client.kpi.invoices" -> "invoices";
             case "client.filter.search" -> "Search:";
@@ -7286,6 +7291,12 @@ public final class I18n {
             case "duedates.pay.cash" -> "Cash (570)";
             case "duedates.pay.date" -> "Payment date";
             case "duedates.pay.method" -> "Method";
+            // COB-2 / COB-3 — cobro desde el listado de asientos archivados
+            // y concepto editable del asiento de cobro/pago.
+            case "duedates.hint.no_invoice" -> "This entry has no linked invoice (it was keyed in as a manual journal entry), so it has no due-date schedule. Collect it with a manual entry from Accounting.";
+            case "duedates.hint.select" -> "Select a posted entry that came from an invoice.";
+            case "duedates.pay.concept" -> "Concept";
+            case "duedates.pay.concept.hint" -> "Text that will appear on the collection/payment journal entry. Edit it if the default one does not say enough.";
             case "duedates.fail" -> "Could not complete the due-date operation.";
             case "duedates.edit.title" -> "Edit due-date schedule";
             case "duedates.edit.hint" -> "The sum of the due dates must match the invoice total ({t}).";
@@ -8419,6 +8430,11 @@ public final class I18n {
             case "client.kpi.model_303.to_pay" -> "a pagar";
             case "client.kpi.model_303.to_refund" -> "a devolver";
             case "client.kpi.model_303.neutral" -> "neutro";
+            // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
+            // estimacion directa). Acumulado del anio hasta el trimestre.
+            case "client.kpi.model_130" -> "MODELO 130 (est.)";
+            case "client.kpi.model_130.to_pay" -> "a pagar, acumulado del año";
+            case "client.kpi.model_130.nothing" -> "nada a pagar este trimestre";
             case "client.kpi.drafts" -> "POR VALIDAR";
             case "client.kpi.invoices" -> "facturas";
             case "client.filter.search" -> "Buscar:";
@@ -8676,6 +8692,12 @@ public final class I18n {
             case "duedates.pay.cash" -> "Caja (570)";
             case "duedates.pay.date" -> "Fecha de pago";
             case "duedates.pay.method" -> "Método";
+            // COB-2 / COB-3 — cobro desde el listado de asientos archivados
+            // y concepto editable del asiento de cobro/pago.
+            case "duedates.hint.no_invoice" -> "Este asiento no tiene factura enlazada (se metió como asiento manual), así que no tiene cuadro de vencimientos. Cóbralo con un asiento desde Contabilidad.";
+            case "duedates.hint.select" -> "Selecciona un asiento validado que venga de una factura.";
+            case "duedates.pay.concept" -> "Concepto";
+            case "duedates.pay.concept.hint" -> "Texto que llevará el asiento de cobro/pago. Cámbialo si el que viene por defecto no dice lo suficiente.";
             case "duedates.fail" -> "No se pudo completar la operación de vencimientos.";
             case "duedates.edit.title" -> "Editar cuadro de vencimientos";
             case "duedates.edit.hint" -> "La suma de los vencimientos debe cuadrar con el total de la factura ({t}).";

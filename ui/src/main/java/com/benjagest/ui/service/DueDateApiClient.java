@@ -56,9 +56,20 @@ public class DueDateApiClient {
 
     public DueDateEntry pay(String id, String treasuryAccountCode, LocalDate paidDate, String method)
             throws IOException, InterruptedException {
+        return pay(id, treasuryAccountCode, paidDate, method, null);
+    }
+
+    /**
+     * COB-3 — {@code concept} opcional: si es null/blanco el backend deja el
+     * concepto automático ("Cobro vto. N" / "Pago vto. N").
+     */
+    public DueDateEntry pay(String id, String treasuryAccountCode, LocalDate paidDate,
+                            String method, String concept)
+            throws IOException, InterruptedException {
         String body = "{\"treasuryAccountCode\":" + jsonStr(treasuryAccountCode)
                 + ",\"paidDate\":" + (paidDate == null ? "null" : "\"" + paidDate + "\"")
-                + ",\"paymentMethod\":" + jsonStr(method) + "}";
+                + ",\"paymentMethod\":" + jsonStr(method)
+                + ",\"concept\":" + jsonStr(concept) + "}";
         return parseOne(send("POST", "/due-dates/" + id + "/pay", body));
     }
 
