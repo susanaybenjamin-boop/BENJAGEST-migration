@@ -196,27 +196,44 @@ public class JournalQueryService {
 
     public List<BalanceRow> balance(LocalDate from, LocalDate to,
                                       String accountPrefix) {
+        // CONTA-4 (2026-09-05) - Los asientos ANULADOS se estaban sumando.
+        //
+        // Benjamin: "en libro mayor la 430 esta a cero, pero si me voy a sumas y
+        // saldos, la generica 430 tiene un saldo acreedor de 6112.92" (y lo
+        // mismo en proveedores). Los 6.112,92 eran EXACTAMENTE los cinco cobros
+        // anulados de esa cuenta.
+        //
+        // El fallo: el filtro de estado estaba en el ON de un LEFT JOIN. Si el
+        // asiento no es POSTED, el join con journal_entries falla y je queda a
+        // NULL, PERO LA LINEA (l) SIGUE AHI y SUM(l.debit) la cuenta igual.
+        // Ademas, al quedar je.entry_date a NULL, esas lineas se colaban por el
+        // filtro de fechas "(je.entry_date IS NULL OR ...)".
+        //
+        // Arreglo: las fechas pasan al ON (para que una linea fuera de rango
+        // tampoco sume) y el importe se agrega con CASE sobre je.id IS NULL, que
+        // es justo "este asiento NO cumplio las condiciones del join".
         StringBuilder sql = new StringBuilder("""
                 SELECT a.id AS account_id, a.code, a.name,
-                       COALESCE(SUM(l.debit), 0) AS total_debit,
-                       COALESCE(SUM(l.credit), 0) AS total_credit
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.debit END), 0) AS total_debit,
+                       COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.credit END), 0) AS total_credit
                   FROM accounting_accounts a
                   LEFT JOIN journal_entry_lines l ON l.account_id = a.id
                   LEFT JOIN journal_entries je ON je.id = l.journal_entry_id
                                               AND je.status = 'POSTED'
                 """);
         List<Object> args = new ArrayList<>();
+        // Las fechas van en el ON, con el resto de condiciones del asiento.
+        if (from != null) { sql.append(" AND je.entry_date >= ?"); args.add(Date.valueOf(from)); }
+        if (to != null)   { sql.append(" AND je.entry_date <= ?"); args.add(Date.valueOf(to)); }
         sql.append(" WHERE a.company_id = ?");
         args.add(tenantContext.getCurrentCompanyId());
-        if (from != null) { sql.append(" AND (je.entry_date IS NULL OR je.entry_date >= ?)"); args.add(Date.valueOf(from)); }
-        if (to != null)   { sql.append(" AND (je.entry_date IS NULL OR je.entry_date <= ?)"); args.add(Date.valueOf(to)); }
         if (accountPrefix != null && !accountPrefix.isBlank()) {
             sql.append(" AND a.code LIKE ?"); args.add(accountPrefix + "%");
         }
         sql.append("""
                  GROUP BY a.id, a.code, a.name
-                HAVING (COALESCE(SUM(l.debit), 0) <> 0
-                     OR COALESCE(SUM(l.credit), 0) <> 0)
+                HAVING (COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.debit END), 0) <> 0
+                     OR COALESCE(SUM(CASE WHEN je.id IS NULL THEN 0 ELSE l.credit END), 0) <> 0)
                  ORDER BY a.code ASC
                 """);
         return jdbcTemplate.query(sql.toString(), (rs, n) -> {
