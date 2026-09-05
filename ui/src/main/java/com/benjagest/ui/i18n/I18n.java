@@ -7415,6 +7415,14 @@ public final class I18n {
             case "accounting.filter.status" -> "Status";
             case "accounting.filter.source" -> "Source";
             case "accounting.filter.search" -> "Search";
+            // DIA-IMP - filtro por importe del Diario.
+            case "accounting.filter.amount" -> "Amount";
+            // SYS-DESGLOSE - desglose de una cuenta desde Sumas y saldos.
+            case "accounting.trial.dblclick_hint" -> "Double-click an account to see the entries that make up its balance.";
+            case "accounting.breakdown.hint" -> "Entries that make up this balance in the selected range."
+                    + " Useful when a generic account holds amounts from several parties.";
+            case "accounting.breakdown.totals" -> "{n} entries   -   Balance: {balance}";
+            case "accounting.filter.amount_prompt" -> "e.g. 1724.25";
             case "accounting.filter.search_prompt" -> "concept, number, source…";
             case "accounting.filter.any" -> "(any)";
             case "accounting.col.num" -> "#";
@@ -8819,6 +8827,14 @@ public final class I18n {
             case "accounting.filter.status" -> "Estado";
             case "accounting.filter.source" -> "Origen";
             case "accounting.filter.search" -> "Buscar";
+            // DIA-IMP - filtro por importe del Diario.
+            case "accounting.filter.amount" -> "Importe";
+            // SYS-DESGLOSE - desglose de una cuenta desde Sumas y saldos.
+            case "accounting.trial.dblclick_hint" -> "Doble clic en una cuenta para ver los apuntes que forman su saldo.";
+            case "accounting.breakdown.hint" -> "Apuntes que forman este saldo en el rango seleccionado."
+                    + " Util cuando una cuenta generica acumula importes de varios terceros.";
+            case "accounting.breakdown.totals" -> "{n} apuntes   -   Saldo: {balance}";
+            case "accounting.filter.amount_prompt" -> "ej. 1.724,25";
             case "accounting.filter.search_prompt" -> "concepto, nº, origen…";
             case "accounting.filter.any" -> "(cualquiera)";
             case "accounting.col.num" -> "Nº";
