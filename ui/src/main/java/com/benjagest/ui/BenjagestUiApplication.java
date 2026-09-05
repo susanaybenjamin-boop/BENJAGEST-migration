@@ -11458,11 +11458,21 @@ public class BenjagestUiApplication extends Application
         Label model303Caption = kpiCardCaption();
         VBox model303Card = kpiCard(t("client.kpi.model_303"), model303Value, model303Caption);
 
+        // M130-1 — Modelo 130 estimado junto al 303. Solo se pinta si el cliente
+        // lo presenta (autónomo en estimación directa); el backend lo decide y
+        // manda model130Applicable. Arranca oculta y se enciende al cargar los
+        // datos, para no dejar un hueco vacío mientras tanto.
+        Label model130Value = kpiCardValue();
+        Label model130Caption = kpiCardCaption();
+        VBox model130Card = kpiCard(t("client.kpi.model_130"), model130Value, model130Caption);
+        model130Card.setVisible(false);
+        model130Card.setManaged(false);
+
         Label draftsValue = kpiCardValue();
         VBox draftsCard = kpiCard(t("client.kpi.drafts"), draftsValue, null);
 
         HBox cards = new HBox(10, salesCard, expensesCard,
-                vatChargedCard, vatBorneCard, model303Card, draftsCard);
+                vatChargedCard, vatBorneCard, model303Card, model130Card, draftsCard);
         cards.setFillHeight(true);
         for (Node c : cards.getChildren()) HBox.setHgrow(c, Priority.ALWAYS);
 
@@ -11497,12 +11507,21 @@ public class BenjagestUiApplication extends Application
                         : k.model303Estimated().signum() < 0
                                 ? t("client.kpi.model_303.to_refund")
                                 : t("client.kpi.model_303.neutral"));
+                model130Card.setVisible(k.model130Applicable());
+                model130Card.setManaged(k.model130Applicable());
+                model130Value.setText(formatMoney(k.model130Estimated()));
+                // El 130 nunca sale negativo (un trimestre en pérdidas se declara
+                // a 0 y se arrastra), así que solo hay dos leyendas posibles.
+                model130Caption.setText(k.model130Estimated().signum() > 0
+                        ? t("client.kpi.model_130.to_pay")
+                        : t("client.kpi.model_130.nothing"));
                 draftsValue.setText(String.valueOf(k.draftCount()));
             });
             task.setOnFailed(ev -> {
                 salesValue.setText("—"); expensesValue.setText("—");
                 vatChargedValue.setText("—"); vatBorneValue.setText("—");
-                model303Value.setText("—"); draftsValue.setText("—");
+                model303Value.setText("—"); model130Value.setText("—");
+                draftsValue.setText("—");
             });
             start(task, "client-kpis");
         };

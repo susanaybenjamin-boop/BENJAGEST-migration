@@ -7029,6 +7029,11 @@ public final class I18n {
             case "client.kpi.model_303.to_pay" -> "to pay";
             case "client.kpi.model_303.to_refund" -> "to refund";
             case "client.kpi.model_303.neutral" -> "neutral";
+            // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
+            // estimacion directa). Acumulado del anio hasta el trimestre.
+            case "client.kpi.model_130" -> "MODEL 130 (est.)";
+            case "client.kpi.model_130.to_pay" -> "to pay, year to date";
+            case "client.kpi.model_130.nothing" -> "nothing to pay this quarter";
             case "client.kpi.drafts" -> "PENDING";
             case "client.kpi.invoices" -> "invoices";
             case "client.filter.search" -> "Search:";
@@ -8425,6 +8430,11 @@ public final class I18n {
             case "client.kpi.model_303.to_pay" -> "a pagar";
             case "client.kpi.model_303.to_refund" -> "a devolver";
             case "client.kpi.model_303.neutral" -> "neutro";
+            // M130-1 — pago fraccionado de IRPF estimado (solo autonomo en
+            // estimacion directa). Acumulado del anio hasta el trimestre.
+            case "client.kpi.model_130" -> "MODELO 130 (est.)";
+            case "client.kpi.model_130.to_pay" -> "a pagar, acumulado del año";
+            case "client.kpi.model_130.nothing" -> "nada a pagar este trimestre";
             case "client.kpi.drafts" -> "POR VALIDAR";
             case "client.kpi.invoices" -> "facturas";
             case "client.filter.search" -> "Buscar:";

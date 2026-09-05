@@ -47,7 +47,15 @@ public class SalesAndExpensesKpiService {
             BigDecimal vatCharged,        // IVA repercutido (cuentas 477)
             BigDecimal vatBorne,          // IVA soportado    (cuentas 472)
             BigDecimal model303Estimated, // vatCharged - vatBorne
-            int draftCount                // asientos sin validar
+            int draftCount,               // asientos sin validar
+            // M130-1 (2026-09-05, peticion Benjamin): pago fraccionado de IRPF
+            // estimado. ACUMULADO del anio hasta el fin del rango, no del
+            // trimestre suelto: el modelo 130 se declara asi.
+            BigDecimal model130Estimated,
+            // El 130 solo lo presenta el autonomo en estimacion directa. Si el
+            // cliente es SL/SA o esta en modulos, la tarjeta no se pinta (un
+            // "IRPF a pagar" en la ficha de una sociedad seria informacion falsa).
+            boolean model130Applicable
     ) {}
 
     public Kpis compute(LocalDate from, LocalDate to) {
@@ -83,9 +91,85 @@ public class SalesAndExpensesKpiService {
                  WHERE company_id = ? AND status = 'DRAFT'
                 """, Integer.class, companyId);
 
+        // M130-1 — Modelo 130 estimado. Misma fuente que el resto de tarjetas
+        // (los ASIENTOS), para que las cifras del cuadro cuadren entre si. Ojo:
+        // el 130 oficial de Fiscal (AeatExtraModelsService.generate130) suma
+        // desde sales_invoices/purchase_invoices, asi que puede diferir si hay
+        // ventas metidas como asiento manual. La FORMULA es la misma: se reusa
+        // compute130 para no duplicar las constantes legales (5% de dificil
+        // justificacion con tope 2.000 EUR, tipo 20%).
+        BigDecimal model130 = computeModel130Estimate(companyId, to);
+
         return new Kpis(salesTotal, salesCount, expensesTotal, expensesCount,
                 vatCharged, vatBorne, model303,
-                drafts == null ? 0 : drafts);
+                drafts == null ? 0 : drafts,
+                model130, isModel130Applicable(companyId));
+    }
+
+    /**
+     * Estimacion del modelo 130 a partir de los asientos POSTED, acumulada
+     * desde el 1 de enero hasta {@code to} (el 130 es acumulativo dentro del
+     * anio; declarar solo el trimestre suelto daria una cifra que no es la
+     * del modelo).
+     *
+     * <ul>
+     *   <li>Ingresos = HABER de 7xx.</li>
+     *   <li>Gastos   = DEBE de 6xx.</li>
+     *   <li>Retenciones = DEBE de 473 (las que le practicaron al autonomo).</li>
+     *   <li>Pagos fraccionados previos = 130 de trimestres anteriores del mismo
+     *       anio ya PRESENTADOS o PAGADOS (mismo criterio que generate130: un
+     *       borrador no presentado no es un pago).</li>
+     * </ul>
+     */
+    private BigDecimal computeModel130Estimate(String companyId, LocalDate to) {
+        int year = to.getYear();
+        int quarter = (to.getMonthValue() - 1) / 3 + 1;
+        Date ytdFrom = Date.valueOf(LocalDate.of(year, 1, 1));
+        Date ytdTo = Date.valueOf(to);
+
+        BigDecimal ingresos = sumLineAmount(companyId, ytdFrom, ytdTo, "7", true);
+        BigDecimal gastos = sumLineAmount(companyId, ytdFrom, ytdTo, "6", false);
+        BigDecimal retenciones = sumLineAmount(companyId, ytdFrom, ytdTo, "473", false);
+
+        BigDecimal pagosPrevios = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(total_amount), 0) FROM tax_filings
+                 WHERE company_id = ? AND tax_model_code = '130'
+                   AND period_year = ? AND period_quarter < ?
+                   AND status IN ('PRESENTED', 'PAID')
+                """, BigDecimal.class, companyId, year, quarter);
+
+        return com.benjagest.backend.aeat.AeatExtraModelsService
+                .compute130(ingresos, gastos, retenciones, pagosPrevios)
+                .pago();
+    }
+
+    /**
+     * El 130 aplica al autonomo en estimacion directa. Se mira la forma
+     * juridica ({@code companies.legal_form}, V120) y el regimen fiscal
+     * ({@code client_advisory_config.tax_regime}, V119), ambos editables desde la ficha
+     * del cliente.
+     *
+     * <p>Si un campo dice explicitamente que NO (SL/SA/... o MODULOS/
+     * SOCIEDADES), no aplica. Si ninguno de los dos esta relleno, se muestra
+     * igualmente (fail-open): el caso tipico del cliente no vinculado es el
+     * autonomo pequenio, y esconder la tarjeta por una ficha a medio rellenar
+     * seria mas confuso que ensenarla.
+     */
+    private boolean isModel130Applicable(String companyId) {
+        String legalForm = jdbcTemplate.query(
+                "SELECT legal_form FROM companies WHERE id = ?",
+                rs -> rs.next() ? rs.getString("legal_form") : null, companyId);
+        String taxRegime = jdbcTemplate.query(
+                "SELECT tax_regime FROM client_advisory_config WHERE company_id = ?",
+                rs -> rs.next() ? rs.getString("tax_regime") : null, companyId);
+
+        boolean legalFormSet = legalForm != null && !legalForm.isBlank();
+        boolean regimeSet = taxRegime != null && !taxRegime.isBlank();
+        if (!legalFormSet && !regimeSet) return true; // ficha sin rellenar
+
+        if (legalFormSet && !"AUTONOMO".equalsIgnoreCase(legalForm)) return false;
+        if (regimeSet && !"ESTIMACION_DIRECTA".equalsIgnoreCase(taxRegime)) return false;
+        return true;
     }
 
     /**
