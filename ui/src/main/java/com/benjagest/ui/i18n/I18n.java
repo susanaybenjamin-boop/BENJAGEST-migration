@@ -7418,10 +7418,15 @@ public final class I18n {
             // DIA-IMP - filtro por importe del Diario.
             case "accounting.filter.amount" -> "Amount";
             // SYS-DESGLOSE - desglose de una cuenta desde Sumas y saldos.
+            case "accounting.trial.breakdown" -> "View entries";
             case "accounting.trial.dblclick_hint" -> "Double-click an account to see the entries that make up its balance.";
             case "accounting.breakdown.hint" -> "Entries that make up this balance in the selected range."
                     + " Useful when a generic account holds amounts from several parties.";
             case "accounting.breakdown.totals" -> "{n} entries   -   Balance: {balance}";
+            case "accounting.col.number" -> "No.";
+            case "accounting.report.empty" -> "No entries in this range.";
+            // Faltaba desde siempre: el boton mostraba la clave cruda.
+            case "labor.editor.save" -> "Save";
             case "accounting.filter.amount_prompt" -> "e.g. 1724.25";
             case "accounting.filter.search_prompt" -> "concept, number, source…";
             case "accounting.filter.any" -> "(any)";
@@ -8830,10 +8835,15 @@ public final class I18n {
             // DIA-IMP - filtro por importe del Diario.
             case "accounting.filter.amount" -> "Importe";
             // SYS-DESGLOSE - desglose de una cuenta desde Sumas y saldos.
+            case "accounting.trial.breakdown" -> "Ver apuntes";
             case "accounting.trial.dblclick_hint" -> "Doble clic en una cuenta para ver los apuntes que forman su saldo.";
             case "accounting.breakdown.hint" -> "Apuntes que forman este saldo en el rango seleccionado."
                     + " Util cuando una cuenta generica acumula importes de varios terceros.";
             case "accounting.breakdown.totals" -> "{n} apuntes   -   Saldo: {balance}";
+            case "accounting.col.number" -> "Nº";
+            case "accounting.report.empty" -> "Sin apuntes en este rango.";
+            // Faltaba desde siempre: el boton mostraba la clave cruda.
+            case "labor.editor.save" -> "Guardar";
             case "accounting.filter.amount_prompt" -> "ej. 1.724,25";
             case "accounting.filter.search_prompt" -> "concepto, nº, origen…";
             case "accounting.filter.any" -> "(cualquiera)";

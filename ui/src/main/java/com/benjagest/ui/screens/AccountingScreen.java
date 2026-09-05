@@ -2956,7 +2956,18 @@ public class AccountingScreen {
             });
             return row;
         });
+        // Boton explicito ADEMAS del doble clic: un doble clic sin nada que lo
+        // anuncie no lo encuentra nadie (lo comprobo Benjamin: "hago doble clic
+        // y no abre ningun apunte"). El boton se enciende al seleccionar fila.
+        Button breakdownBtn = new Button(tt.apply("accounting.trial.breakdown"));
+        breakdownBtn.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener(
+                (o, ov, nv) -> breakdownBtn.setDisable(nv == null));
+        breakdownBtn.setOnAction(e -> showAccountBreakdown(
+                table.getSelectionModel().getSelectedItem(), from.getValue(), to.getValue()));
+
         Label dblHint = new Label(tt.apply("accounting.trial.dblclick_hint"));
+        dblHint.setWrapText(true);
         dblHint.getStyleClass().add("settings-hint");
 
         Button exportPdf = new Button(tt.apply("accounting.fin.export_pdf"));
@@ -2967,10 +2978,12 @@ public class AccountingScreen {
         HBox filters = new HBox(8,
                 new Label(tt.apply("accounting.filter.from")), from,
                 new Label(tt.apply("accounting.filter.to")), to,
-                new Label(tt.apply("accounting.trial.prefix")), prefix, view, exportPdf);
+                new Label(tt.apply("accounting.trial.prefix")), prefix,
+                view, breakdownBtn, exportPdf);
         filters.setAlignment(Pos.CENTER_LEFT);
         // Totales ARRIBA de la tabla: siempre visibles sin scroll al fondo.
-        VBox box = new VBox(10, filters, totals, table);
+        // dblHint explica el atajo del doble clic, que si no es invisible.
+        VBox box = new VBox(10, filters, totals, dblHint, table);
         box.setPadding(new Insets(8));
         VBox.setVgrow(box, Priority.ALWAYS);
         return box;
