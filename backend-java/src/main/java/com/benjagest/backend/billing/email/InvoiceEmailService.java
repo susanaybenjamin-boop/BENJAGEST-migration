@@ -74,8 +74,29 @@ public class InvoiceEmailService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * MAIL-CC — Email registrado del cliente de la factura (o null si no
+     * tiene). La UI lo enseña en el diálogo de envío para que el usuario vea
+     * a dónde va a salir la factura antes de pulsar Enviar.
+     */
+    @Transactional(readOnly = true)
+    public String registeredRecipient(String invoiceId) {
+        SalesInvoice invoice = invoiceService.get(invoiceId);
+        return lookupCustomerEmail(invoice.customerId());
+    }
+
     @Transactional(readOnly = true)
     public SentReceipt send(String invoiceId, String recipientOverride, String customSubject, String customBody) {
+        return send(invoiceId, recipientOverride, null, customSubject, customBody);
+    }
+
+    /**
+     * MAIL-CC — Envío con copia. {@code recipientOverride} y {@code cc}
+     * admiten varias direcciones separadas por coma o punto y coma.
+     */
+    @Transactional(readOnly = true)
+    public SentReceipt send(String invoiceId, String recipientOverride, String cc,
+                            String customSubject, String customBody) {
         SalesInvoice invoice = invoiceService.get(invoiceId);
         if (!"VALIDATED".equals(invoice.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -90,6 +111,9 @@ public class InvoiceEmailService {
                     "El cliente no tiene email registrado. Indica una direccion manualmente.");
         }
 
+        String[] toList = parseAddresses(to, "destinatario");
+        String[] ccList = parseAddresses(cc, "con copia");
+
         byte[] pdfBytes = resolvePdf(invoice);
         String filename = sanitizeFilename(invoice.invoiceNumber()) + ".pdf";
 
@@ -101,8 +125,32 @@ public class InvoiceEmailService {
                 ? customBody
                 : defaultBody(invoice, company);
 
-        emailSenderService.send(to, subject, body, pdfBytes, filename);
-        return new SentReceipt(to, subject, filename);
+        emailSenderService.send(toList, ccList, subject, body, pdfBytes, filename);
+        return new SentReceipt(String.join(", ", toList), String.join(", ", ccList), subject, filename);
+    }
+
+    /** Patrón mínimo de dirección: algo@algo.algo, sin espacios. */
+    private static final java.util.regex.Pattern EMAIL =
+            java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    /**
+     * Parte una lista "a@x.es, b@y.com; c@z.es" en direcciones. Si alguna no
+     * tiene forma de email, 400 con la dirección culpable (mejor que el error
+     * críptico del servidor de correo).
+     */
+    static String[] parseAddresses(String raw, String fieldLabel) {
+        if (!StringUtils.hasText(raw)) return new String[0];
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String part : raw.split("[,;]")) {
+            String a = part.trim();
+            if (a.isEmpty()) continue;
+            if (!EMAIL.matcher(a).matches()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Direccion de email no valida en '" + fieldLabel + "': " + a);
+            }
+            if (!out.contains(a)) out.add(a);
+        }
+        return out.toArray(new String[0]);
     }
 
     private String lookupCustomerEmail(String customerId) {
@@ -171,5 +219,5 @@ public class InvoiceEmailService {
         return number.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
-    public record SentReceipt(String recipient, String subject, String filename) {}
+    public record SentReceipt(String recipient, String cc, String subject, String filename) {}
 }

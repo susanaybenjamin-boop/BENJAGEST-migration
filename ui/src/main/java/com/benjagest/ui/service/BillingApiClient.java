@@ -708,19 +708,48 @@ public class BillingApiClient {
      * que la UI pueda mostrar "Enviada a foo@bar".
      */
     public String sendInvoiceByEmail(String id, String recipientOverrideOrNull) throws IOException, InterruptedException {
-        StringBuilder body = new StringBuilder("{");
+        return sendInvoiceByEmail(id, recipientOverrideOrNull, null).recipient();
+    }
+
+    /** MAIL-CC — Acuse del envío: a quién salió y a quién en copia. */
+    public record EmailReceipt(String recipient, String cc) {}
+
+    /**
+     * MAIL-CC — Envío con "otro email" opcional y "con copia a" opcional
+     * (ambos admiten varias direcciones separadas por comas).
+     */
+    public EmailReceipt sendInvoiceByEmail(String id, String recipientOverrideOrNull, String ccOrNull)
+            throws IOException, InterruptedException {
+        java.util.List<String> parts = new java.util.ArrayList<>();
         if (recipientOverrideOrNull != null && !recipientOverrideOrNull.isBlank()) {
-            body.append(field("recipient", recipientOverrideOrNull.trim()));
+            parts.add(field("recipient", recipientOverrideOrNull.trim()));
         }
-        body.append("}");
+        if (ccOrNull != null && !ccOrNull.isBlank()) {
+            parts.add(field("cc", ccOrNull.trim()));
+        }
+        String body = "{" + String.join(",", parts) + "}";
         HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
                 URI.create(baseUrl + "/billing/invoices/" + id + "/email"))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString())));
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
         ensureOk(response);
         String recipient = textField(response.body(), "recipient");
-        return recipient.isEmpty() ? null : recipient;
+        String cc = textField(response.body(), "cc");
+        return new EmailReceipt(recipient.isEmpty() ? null : recipient, cc.isEmpty() ? null : cc);
+    }
+
+    /**
+     * MAIL-CC — Email registrado del cliente de la factura, o null si no
+     * tiene ninguno. Lo enseña el diálogo de envío.
+     */
+    public String invoiceRegisteredEmail(String id) throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(HttpRequest.newBuilder(
+                URI.create(baseUrl + "/billing/invoices/" + id + "/email-recipient"))
+                .timeout(Duration.ofSeconds(10)).GET());
+        ensureOk(response);
+        String email = textField(response.body() == null ? "" : response.body(), "registeredEmail");
+        return email.isEmpty() ? null : email;
     }
 
     private SalesInvoiceSummary parseInvoiceHeader(String json) {

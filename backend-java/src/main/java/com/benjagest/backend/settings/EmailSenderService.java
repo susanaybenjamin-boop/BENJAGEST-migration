@@ -56,11 +56,11 @@ public class EmailSenderService {
      * devuelve true. Si no, devuelve false para que el llamante use SMTP. Así
      * facturas/nóminas/TPB usan Gmail automáticamente sin tocar cada sitio.
      */
-    private boolean sentViaGmail(String companyId, String to, String subject, String body,
+    private boolean sentViaGmail(String companyId, String[] to, String[] cc, String subject, String body,
                                  byte[] attachmentBytes, String attachmentName) {
         if (companyId == null || !gmailApiService.enabledFor(companyId)) return false;
         var conn = googleOAuthService.apiConnection(companyId);
-        gmailApiService.send(companyId, conn.email(), null, to, subject, body, attachmentBytes, attachmentName);
+        gmailApiService.send(companyId, conn.email(), null, to, cc, subject, body, attachmentBytes, attachmentName);
         return true;
     }
 
@@ -83,9 +83,19 @@ public class EmailSenderService {
      */
     public void send(String to, String subject, String body,
                      byte[] attachmentBytes, String attachmentName) {
+        send(new String[]{to}, new String[0], subject, body, attachmentBytes, attachmentName);
+    }
+
+    /**
+     * MAIL-CC — igual que {@link #send(String, String, String, byte[], String)}
+     * pero con uno o varios destinatarios y direcciones en copia (CC). Lo usa
+     * el envío de facturas: "otro email" + "con copia a".
+     */
+    public void send(String[] to, String[] cc, String subject, String body,
+                     byte[] attachmentBytes, String attachmentName) {
         Optional<EmailConfigRow> smtp = repository.findCurrent();
         try {
-            if (sentViaGmail(currentCompanyIdSafe(), to, subject, body, attachmentBytes, attachmentName)) return;
+            if (sentViaGmail(currentCompanyIdSafe(), to, cc, subject, body, attachmentBytes, attachmentName)) return;
         } catch (RuntimeException gmailEx) {
             // Gmail esta habilitado para la empresa pero el envio fallo (p.ej. la
             // Gmail API no esta habilitada en el proyecto de Google Cloud, o el
@@ -97,7 +107,7 @@ public class EmailSenderService {
         EmailConfigRow row = smtp.orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La empresa no tiene configurado el SMTP. Configuralo en Configuracion -> Email."));
-        sendWith(row, to, subject, body, attachmentBytes, attachmentName);
+        sendWith(row, to, cc, subject, body, attachmentBytes, attachmentName);
     }
 
     /**
@@ -109,16 +119,18 @@ public class EmailSenderService {
      */
     public void sendAs(String companyId, String to, String subject, String body,
                          byte[] attachmentBytes, String attachmentName) {
-        if (sentViaGmail(companyId, to, subject, body, attachmentBytes, attachmentName)) return;
+        String[] toArr = {to};
+        String[] noCc = new String[0];
+        if (sentViaGmail(companyId, toArr, noCc, subject, body, attachmentBytes, attachmentName)) return;
         EmailConfigRow row = repository.findForCompany(companyId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "La asesoria no tiene SMTP configurado. Configuralo en Configuracion -> Email."));
-        sendWith(row, to, subject, body, attachmentBytes, attachmentName);
+        sendWith(row, toArr, noCc, subject, body, attachmentBytes, attachmentName);
     }
 
-    private void sendWith(EmailConfigRow row, String to, String subject, String body,
+    private void sendWith(EmailConfigRow row, String[] to, String[] cc, String subject, String body,
                             byte[] attachmentBytes, String attachmentName) {
-        if (!StringUtils.hasText(to)) {
+        if (to == null || to.length == 0 || !StringUtils.hasText(to[0])) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Destinatario requerido");
         }
         if (!StringUtils.hasText(row.smtpHost()) || row.smtpPort() == null) {
@@ -168,6 +180,9 @@ public class EmailSenderService {
                 helper.setFrom(from);
             }
             helper.setTo(to);
+            if (cc != null && cc.length > 0) {
+                helper.setCc(cc);
+            }
             if (StringUtils.hasText(row.replyTo())) {
                 helper.setReplyTo(row.replyTo());
             }
