@@ -45,11 +45,18 @@ public class GmailApiService {
     /** Envía un correo (con adjunto opcional) por la cuenta Gmail conectada. */
     public void send(String companyId, String from, String fromName, String to, String subject,
                      String body, byte[] attachmentBytes, String attachmentName) {
+        send(companyId, from, fromName, new String[]{to}, new String[0], subject, body,
+                attachmentBytes, attachmentName);
+    }
+
+    /** MAIL-CC — variante con varios destinatarios y copia (CC). */
+    public void send(String companyId, String from, String fromName, String[] to, String[] cc,
+                     String subject, String body, byte[] attachmentBytes, String attachmentName) {
         String accessToken = googleOAuth.freshAccessToken(companyId);
         if (accessToken == null || accessToken.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Google no devolvió access token para Gmail.");
         }
-        String raw = buildRawMessage(from, fromName, to, subject, body, attachmentBytes, attachmentName);
+        String raw = buildRawMessage(from, fromName, to, cc, subject, body, attachmentBytes, attachmentName);
         String json = "{\"raw\":\"" + raw + "\"}";
         HttpResponse<String> resp;
         try {
@@ -68,7 +75,7 @@ public class GmailApiService {
         }
     }
 
-    private String buildRawMessage(String from, String fromName, String to, String subject,
+    private String buildRawMessage(String from, String fromName, String[] to, String[] cc, String subject,
                                    String body, byte[] attachmentBytes, String attachmentName) {
         try {
             boolean hasAttachment = attachmentBytes != null && attachmentBytes.length > 0
@@ -78,6 +85,7 @@ public class GmailApiService {
             if (StringUtils.hasText(fromName)) helper.setFrom(from, fromName);
             else helper.setFrom(from);
             helper.setTo(to);
+            if (cc != null && cc.length > 0) helper.setCc(cc);
             helper.setSubject(subject == null ? "" : subject);
             helper.setText(body == null ? "" : body, false);
             if (hasAttachment) helper.addAttachment(attachmentName, new ByteArrayResource(attachmentBytes));

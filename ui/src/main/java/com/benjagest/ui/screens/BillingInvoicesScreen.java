@@ -632,33 +632,106 @@ public class BillingInvoicesScreen extends ScreenBase {
     /**
      * Envía la factura validada al email del cliente. F-EMAIL.
      *
-     * Diálogo de confirmación con TextField pre-rellenado (vacío si el
-     * cliente no tiene contacto principal) — así el usuario puede
-     * sobreescribir el destinatario o introducir uno si falta. Si lo
-     * deja vacío se manda al primary_contact por defecto.
+     * MAIL-CC (2026-10-17, petición de Benjamin): antes el diálogo decía
+     * "vacío = email registrado" sin enseñar CUÁL era. Ahora primero se pide
+     * al backend el email registrado del cliente y el diálogo lo muestra; el
+     * campo vacío es solo para mandarla a OTRO email, y hay un "con copia a"
+     * opcional (varias direcciones separadas por comas).
      */
     private void sendInvoiceByEmail(SalesInvoiceSummary sel) {
-        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
-        dialog.setHeaderText(t("list.dialog.email.title") + "\n" + sel.invoiceNumber());
-        dialog.setContentText(t("list.dialog.email.recipient_label"));
-        dialog.setTitle(t("list.dialog.email.window_title"));
-        Optional<String> ans = dialog.showAndWait();
-        if (ans.isEmpty()) return;
-        String override = ans.get().trim();
-        // Nota: vacio = usar el email registrado del cliente. El
-        // backend rechaza con 400 si no hay ni override ni primary.
-
-        Task<String> task = new Task<>() {
+        Task<String> lookup = new Task<>() {
             @Override
             protected String call() throws Exception {
-                return billingApiClient.sendInvoiceByEmail(sel.id(), override.isEmpty() ? null : override);
+                return billingApiClient.invoiceRegisteredEmail(sel.id());
+            }
+        };
+        lookup.setOnSucceeded(ev -> showSendEmailDialog(sel, lookup.getValue()));
+        // Si no se pudo consultar, el diálogo se abre igual (sin email
+        // registrado visible): el envío sigue siendo posible con otro email.
+        lookup.setOnFailed(ev -> showSendEmailDialog(sel, null));
+        start(lookup, "billing-invoice-email-recipient");
+    }
+
+    private void showSendEmailDialog(SalesInvoiceSummary sel, String registeredEmail) {
+        boolean hasRegistered = registeredEmail != null && !registeredEmail.isBlank();
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(t("list.dialog.email.window_title"));
+        dialog.setHeaderText(t("list.dialog.email.title") + " " + sel.invoiceNumber());
+
+        Label registeredTitle = new Label(t("list.dialog.email.registered_label"));
+        registeredTitle.getStyleClass().add("invoice-field-label");
+        Label registeredValue = new Label(hasRegistered
+                ? registeredEmail : t("list.dialog.email.registered_none"));
+        registeredValue.setStyle("-fx-font-weight: bold;");
+        registeredValue.setWrapText(true);
+
+        TextField other = new TextField();
+        other.setPromptText(hasRegistered
+                ? t("list.dialog.email.other_prompt")
+                : t("list.dialog.email.other_prompt_required"));
+        TextField cc = new TextField();
+        cc.setPromptText(t("list.dialog.email.cc_prompt"));
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(10);
+        ColumnConstraints labelCol = new ColumnConstraints();
+        labelCol.setMinWidth(Region.USE_PREF_SIZE);
+        ColumnConstraints fieldCol = new ColumnConstraints();
+        fieldCol.setHgrow(Priority.ALWAYS);
+        fieldCol.setFillWidth(true);
+        grid.getColumnConstraints().addAll(labelCol, fieldCol);
+        grid.addRow(0, registeredTitle, registeredValue);
+        Label otherLabel = new Label(t("list.dialog.email.other_label"));
+        otherLabel.getStyleClass().add("invoice-field-label");
+        Label ccLabel = new Label(t("list.dialog.email.cc_label"));
+        ccLabel.getStyleClass().add("invoice-field-label");
+        grid.addRow(1, otherLabel, other);
+        grid.addRow(2, ccLabel, cc);
+
+        Label hint = new Label(hasRegistered
+                ? t("list.dialog.email.hint")
+                : t("list.dialog.email.hint_no_registered"));
+        hint.getStyleClass().add("settings-hint");
+        hint.setWrapText(true);
+        hint.setMinHeight(Region.USE_PREF_SIZE);
+
+        VBox content = new VBox(12, grid, hint);
+        content.setPadding(new Insets(8, 0, 0, 0));
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setPrefSize(600, 300);
+        dialog.setResizable(true);
+
+        ButtonType sendType = new ButtonType(t("list.dialog.email.send"), ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CANCEL, sendType);
+        Node sendBtn = dialog.getDialogPane().lookupButton(sendType);
+        // Sin email registrado y sin "otro email" no hay a quién mandarla.
+        if (!hasRegistered) {
+            sendBtn.disableProperty().bind(other.textProperty().isEmpty());
+        }
+        javafx.application.Platform.runLater(other::requestFocus);
+
+        Optional<ButtonType> ans = dialog.showAndWait();
+        if (ans.isEmpty() || ans.get() != sendType) return;
+        String override = other.getText() == null ? "" : other.getText().trim();
+        String ccText = cc.getText() == null ? "" : cc.getText().trim();
+
+        Task<BillingApiClient.EmailReceipt> task = new Task<>() {
+            @Override
+            protected BillingApiClient.EmailReceipt call() throws Exception {
+                return billingApiClient.sendInvoiceByEmail(sel.id(),
+                        override.isEmpty() ? null : override,
+                        ccText.isEmpty() ? null : ccText);
             }
         };
         task.setOnSucceeded(ev -> {
-            String recipient = task.getValue();
+            BillingApiClient.EmailReceipt receipt = task.getValue();
             String body = t("list.dialog.email.success_prefix")
-                    + (recipient == null ? "" : recipient)
+                    + (receipt == null || receipt.recipient() == null ? "" : receipt.recipient())
                     + t("list.dialog.email.success_suffix");
+            if (receipt != null && receipt.cc() != null) {
+                body += "\n" + t("list.dialog.email.success_cc") + receipt.cc();
+            }
             Alert ok = new Alert(Alert.AlertType.INFORMATION, body, ButtonType.OK);
             ok.setHeaderText(null);
             ok.showAndWait();

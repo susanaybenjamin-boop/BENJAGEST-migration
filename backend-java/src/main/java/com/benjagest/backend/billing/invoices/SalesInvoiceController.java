@@ -264,7 +264,8 @@ public class SalesInvoiceController {
      * Envia la factura por email al cliente — slice F-EMAIL.
      *
      * Body:
-     *   { "recipient": "opcional@override", "subject": "opcional",
+     *   { "recipient": "opcional@override", "cc": "a@x.es, b@y.es",
+     *     "subject": "opcional",
      *     "body": "opcional" }
      *
      * Si no se manda recipient, se busca el email del primary_contact
@@ -279,12 +280,25 @@ public class SalesInvoiceController {
             @PathVariable("id") String id,
             @RequestBody(required = false) SendInvoiceEmailRequest request) {
         String recipient = request == null ? null : request.recipient();
+        String cc = request == null ? null : request.cc();
         String subject = request == null ? null : request.subject();
         String body = request == null ? null : request.body();
-        return emailService.send(id, recipient, subject, body);
+        return emailService.send(id, recipient, cc, subject, body);
     }
 
-    public record SendInvoiceEmailRequest(String recipient, String subject, String body) {
+    public record SendInvoiceEmailRequest(String recipient, String cc, String subject, String body) {
+    }
+
+    /**
+     * MAIL-CC — Email registrado del cliente de la factura, para que el
+     * diálogo de envío lo enseñe. {@code registeredEmail} es null si el
+     * cliente no tiene ninguno.
+     */
+    @GetMapping("/{id}/email-recipient")
+    public java.util.Map<String, String> emailRecipient(@PathVariable("id") String id) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        out.put("registeredEmail", emailService.registeredRecipient(id));
+        return out;
     }
 
     /**
