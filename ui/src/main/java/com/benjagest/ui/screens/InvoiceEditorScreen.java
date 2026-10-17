@@ -1592,12 +1592,71 @@ public class InvoiceEditorScreen extends ScreenBase {
      * Selector de conceptos: mezcla los GUARDADOS en el catálogo con los ya
      * USADOS en facturas anteriores (el backend los devuelve juntos, marcados
      * con {@code source}). Elegir uno o varios los añade como líneas.
+     *
+     * <p>CONC-4 (2026-10-17, petición de Benjamin): "no puedo copiar el
+     * concepto solamente". Ahora:
+     * <ul>
+     *   <li>Arriba salen las líneas de ESTA factura con una casilla: se marcan
+     *       las que se quieren sustituir y "Sustituir marcadas" les pone el
+     *       texto de los conceptos elegidos, automáticamente.</li>
+     *   <li>"Solo el texto del concepto" (marcado por defecto): se copia el
+     *       texto y se respetan cantidad, precio, IVA y retención de la línea.
+     *       Desmarcado, el concepto trae también su precio/IVA/retención.</li>
+     *   <li>"Copiar texto" deja el texto en el portapapeles para pegarlo
+     *       donde se quiera.</li>
+     * </ul>
      */
     private void showConceptPicker() {
         Stage dlg = new Stage();
         dlg.setTitle(t("concepts.title"));
         dlg.initModality(javafx.stage.Modality.APPLICATION_MODAL);
         com.benjagest.ui.support.Dialogs.ownAndCenter(dlg);
+
+        // CONC-4 — Líneas de la factura, marcables para sustituir. Arrancan
+        // marcadas las que estuvieran seleccionadas en el editor.
+        java.util.Map<InvoiceLineDraft, BooleanProperty> marks = new java.util.IdentityHashMap<>();
+        for (InvoiceLineDraft l : editorLinesTable.getItems()) {
+            marks.put(l, new SimpleBooleanProperty(false));
+        }
+        for (InvoiceLineDraft l : editorLinesTable.getSelectionModel().getSelectedItems()) {
+            BooleanProperty m = marks.get(l);
+            if (m != null) m.set(true);
+        }
+        TableView<InvoiceLineDraft> linesTable = new TableView<>(
+                FXCollections.observableArrayList(editorLinesTable.getItems()));
+        linesTable.getStyleClass().add("data-table");
+        linesTable.setEditable(true);
+        linesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        linesTable.setPlaceholder(new Label(t("concepts.lines.empty")));
+        linesTable.setPrefHeight(170);
+        linesTable.setMinHeight(120);
+        TableColumn<InvoiceLineDraft, Boolean> lMark = new TableColumn<>(t("concepts.lines.col.mark"));
+        lMark.setCellValueFactory(c -> marks.computeIfAbsent(c.getValue(), k -> new SimpleBooleanProperty(false)));
+        lMark.setCellFactory(javafx.scene.control.cell.CheckBoxTableCell.forTableColumn(lMark));
+        lMark.setEditable(true);
+        lMark.setPrefWidth(80);
+        lMark.setMaxWidth(90);
+        TableColumn<InvoiceLineDraft, String> lNum = new TableColumn<>("#");
+        lNum.setCellValueFactory(c -> new SimpleStringProperty(
+                String.valueOf(linesTable.getItems().indexOf(c.getValue()) + 1)));
+        lNum.setPrefWidth(40);
+        lNum.setMaxWidth(50);
+        lNum.setSortable(false);
+        TableColumn<InvoiceLineDraft, String> lDesc = new TableColumn<>(t("editor.lines.col.description"));
+        lDesc.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDescription()));
+        lDesc.setPrefWidth(440);
+        lDesc.setSortable(false);
+        TableColumn<InvoiceLineDraft, String> lQty = new TableColumn<>(t("editor.lines.col.qty"));
+        lQty.setCellValueFactory(c -> new SimpleStringProperty(formatDecimalForCell(c.getValue().getQuantity())));
+        lQty.setPrefWidth(70);
+        lQty.setSortable(false);
+        TableColumn<InvoiceLineDraft, String> lPrice = new TableColumn<>(t("editor.lines.col.price"));
+        lPrice.setCellValueFactory(c -> new SimpleStringProperty(money(c.getValue().getUnitPrice().toPlainString())));
+        lPrice.setPrefWidth(100);
+        lPrice.setSortable(false);
+        linesTable.getColumns().addAll(java.util.List.of(lMark, lNum, lDesc, lQty, lPrice));
+        Label linesTitle = new Label(t("concepts.lines.title"));
+        linesTitle.getStyleClass().add("invoice-field-label");
 
         TableView<ConceptEntry> table = new TableView<>();
         table.getStyleClass().add("data-table");
@@ -1717,8 +1776,46 @@ public class InvoiceEditorScreen extends ScreenBase {
             start(del, "concept-delete");
         });
 
+        CheckBox textOnly = new CheckBox(t("concepts.text_only"));
+        textOnly.setSelected(true);
+        textOnly.setWrapText(true);
+
+        // CONC-4 — Sustituir las líneas marcadas por los conceptos elegidos.
+        Button replace = new Button(t("concepts.action.replace"));
+        replace.setGraphic(icon("fas-exchange-alt"));
+        replace.getStyleClass().add("button-primary");
+        replace.setOnAction(e -> {
+            var sel = new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems());
+            if (sel.isEmpty()) { showError(t("concepts.fail.title"), t("concepts.none_selected")); return; }
+            java.util.List<InvoiceLineDraft> targets = linesTable.getItems().stream()
+                    .filter(l -> marks.containsKey(l) && marks.get(l).get())
+                    .toList();
+            if (targets.isEmpty()) { showError(t("concepts.fail.title"), t("concepts.none_marked")); return; }
+            int[] result = replaceLinesWithConcepts(targets, sel, textOnly.isSelected());
+            String msg = t("concepts.replaced").replace("{n}", String.valueOf(result[0]));
+            if (result[1] > 0) {
+                msg += t("concepts.replaced_added").replace("{m}", String.valueOf(result[1]));
+            }
+            dlg.close();
+            toast(msg);
+        });
+
+        // CONC-4 — Copiar solo el texto del/los concepto(s) al portapapeles.
+        Button copyText = new Button(t("concepts.action.copy_text"));
+        copyText.setGraphic(icon("fas-copy"));
+        copyText.setOnAction(e -> {
+            var sel = table.getSelectionModel().getSelectedItems();
+            if (sel.isEmpty()) { showError(t("concepts.fail.title"), t("concepts.none_selected")); return; }
+            String text = sel.stream().map(c -> singleLine(c.invoiceText()))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.putString(text);
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+            toast(dlg, t("concepts.copied"));
+        });
+
         Button add = new Button(t("concepts.action.add"));
-        add.setGraphic(icon("fas-plus")); add.getStyleClass().add("button-primary");
+        add.setGraphic(icon("fas-plus"));
         add.setOnAction(e -> {
             var sel = new java.util.ArrayList<>(table.getSelectionModel().getSelectedItems());
             if (sel.isEmpty()) { showError(t("concepts.fail.title"), t("concepts.none_selected")); return; }
@@ -1729,7 +1826,7 @@ public class InvoiceEditorScreen extends ScreenBase {
                     (l.getDescription() == null || l.getDescription().isBlank())
                             && l.getUnitPrice().signum() == 0);
             for (ConceptEntry c : sel) {
-                editorLinesTable.getItems().add(lineFromConcept(c));
+                editorLinesTable.getItems().add(lineFromConcept(c, textOnly.isSelected()));
             }
             recomputeEditorTotals();
             dlg.close();
@@ -1740,14 +1837,18 @@ public class InvoiceEditorScreen extends ScreenBase {
         Region btnSpacer = new Region();
         HBox.setHgrow(btnSpacer, Priority.ALWAYS);
         HBox btns = new HBox(10, newConcept, saveToCatalog, editConcept, removeConcept,
-                btnSpacer, cancel, add);
+                btnSpacer, cancel, copyText, add, replace);
         btns.setAlignment(Pos.CENTER_LEFT);
+        for (Node b : btns.getChildren()) {
+            if (b instanceof Button bb) bb.setMinWidth(Region.USE_PREF_SIZE);
+        }
 
-        // Controles ARRIBA del listado (patrón Slice 3V): buscador y acciones
-        // visibles sin hacer scroll.
-        VBox root = new VBox(12, hint, search, new Separator(), table, btns);
+        // Controles ARRIBA del listado (patrón Slice 3V): líneas a sustituir,
+        // buscador y modo visibles sin hacer scroll; la tabla de conceptos crece.
+        VBox root = new VBox(10, hint, linesTitle, linesTable, new Separator(),
+                search, textOnly, table, btns);
         root.setPadding(new javafx.geometry.Insets(16));
-        root.setPrefSize(860, 560);
+        root.setPrefSize(1100, 720);
         Scene scene = new Scene(root);
         scene.getStylesheets().add(getClass().getResource("/com/benjagest/ui/app.css").toExternalForm());
         dlg.setScene(scene);
@@ -1760,6 +1861,66 @@ public class InvoiceEditorScreen extends ScreenBase {
         String raw = (c.name() == null ? "" : c.name()) + " "
                 + (c.description() == null ? "" : c.description());
         return stripDiacritics(raw.toLowerCase());
+    }
+
+    /**
+     * CONC-4 — Sustituye las líneas marcadas por los conceptos elegidos:
+     * <ul>
+     *   <li>Un solo concepto: se aplica a TODAS las líneas marcadas.</li>
+     *   <li>Varios: se emparejan en orden (1ª marcada con el 1er concepto…).
+     *       Si sobran conceptos, se añaden como líneas nuevas justo debajo de
+     *       la última sustituida; si sobran líneas, se quedan como estaban.</li>
+     * </ul>
+     * Con {@code textOnly} solo cambia el texto; si no, también precio, IVA y
+     * retención (la cantidad de la línea se respeta siempre).
+     *
+     * @return {sustituidas, añadidas}
+     */
+    private int[] replaceLinesWithConcepts(java.util.List<InvoiceLineDraft> targets,
+                                           java.util.List<ConceptEntry> concepts, boolean textOnly) {
+        int replaced = 0;
+        int added = 0;
+        if (concepts.size() == 1) {
+            for (InvoiceLineDraft line : targets) {
+                applyConceptToLine(line, concepts.get(0), textOnly);
+                replaced++;
+            }
+        } else {
+            int pairs = Math.min(targets.size(), concepts.size());
+            for (int i = 0; i < pairs; i++) {
+                applyConceptToLine(targets.get(i), concepts.get(i), textOnly);
+                replaced++;
+            }
+            int insertAt = editorLinesTable.getItems().indexOf(targets.get(pairs - 1)) + 1;
+            for (int i = pairs; i < concepts.size(); i++) {
+                editorLinesTable.getItems().add(insertAt++, lineFromConcept(concepts.get(i), textOnly));
+                added++;
+            }
+        }
+        editorLinesTable.refresh();
+        recomputeEditorTotals();
+        return new int[]{replaced, added};
+    }
+
+    /** CONC-4 — Pone el concepto en una línea existente. */
+    private void applyConceptToLine(InvoiceLineDraft line, ConceptEntry c, boolean textOnly) {
+        line.setDescription(singleLine(c.invoiceText()));
+        if (textOnly) return;
+        InvoiceLineDraft fromConcept = lineFromConcept(c);
+        line.setUnitPrice(fromConcept.getUnitPrice());
+        line.setVatPercent(fromConcept.getVatPercent());
+        line.setVatRateId(fromConcept.getVatRateId());
+        line.setRetentionPercent(fromConcept.getRetentionPercent());
+    }
+
+    /**
+     * Línea nueva a partir de un concepto. CONC-4: con {@code textOnly} solo
+     * se copia el texto (precio 0 e IVA/retención del cliente, para rellenar).
+     */
+    private InvoiceLineDraft lineFromConcept(ConceptEntry c, boolean textOnly) {
+        if (!textOnly) return lineFromConcept(c);
+        return new InvoiceLineDraft(singleLine(c.invoiceText()), java.math.BigDecimal.ONE,
+                java.math.BigDecimal.ZERO, editorDefaultVat, editorDefaultRetention);
     }
 
     /** Línea de factura a partir de un concepto elegido. */
