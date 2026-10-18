@@ -207,11 +207,21 @@ public class PaymentScheduleService {
     private void requireOutstanding(String companyId, DueDate dd) {
         if ("SALES".equals(dd.invoiceKind())) {
             List<BigDecimal[]> rows = jdbc.query("""
-                    SELECT total, COALESCE(paid_amount, 0) AS paid FROM sales_invoices
+                    SELECT total, COALESCE(paid_amount, 0) AS paid,
+                           CASE WHEN status = 'VOIDED' THEN 1 ELSE 0 END AS voided
+                      FROM sales_invoices
                      WHERE id = ? AND company_id = ?
-                    """, (rs, n) -> new BigDecimal[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid")},
+                    """, (rs, n) -> new BigDecimal[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid"),
+                            rs.getBigDecimal("voided")},
                     dd.invoiceId(), companyId);
             if (rows.isEmpty() || rows.get(0)[0] == null) return;
+            // COB-RECT: ni una anulada ni una rectificativa en negativo se cobran
+            // (la rectificativa es la que salda la anulada: el par netea a 0).
+            if (rows.get(0)[2].signum() > 0 || rows.get(0)[0].signum() <= 0 || dd.amount().signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Esta factura no se cobra: es una anulada o una rectificativa en negativo "
+                        + "(la rectificativa salda la factura anulada).");
+            }
             BigDecimal pending = rows.get(0)[0].subtract(rows.get(0)[1]);
             if (dd.amount().subtract(pending).compareTo(new BigDecimal("0.01")) > 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, pending.signum() <= 0

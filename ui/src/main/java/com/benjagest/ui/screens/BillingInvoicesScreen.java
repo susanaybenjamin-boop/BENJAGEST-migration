@@ -451,7 +451,9 @@ public class BillingInvoicesScreen extends ScreenBase {
             pdfBtn.setUserData(stored);
             pdfBtn.setText(stored ? t("list.action.open_pdf") : t("list.action.save_pdf"));
             pdfBtn.setGraphic(icon(stored ? "fas-file-pdf" : "fas-save"));
-            emailBtn.setDisable(!isValidated || isHistorical);
+            // COB-MAIL-H: una historica se envia si tiene su PDF original guardado
+            // (Benjamin: "en las historicas el boton enviar no se activa").
+            emailBtn.setDisable(!isValidated || (isHistorical && !storedPdf));
         });
 
         pdfBtn.setOnAction(ev -> {
@@ -524,7 +526,12 @@ public class BillingInvoicesScreen extends ScreenBase {
                     sel.customerLegalName(), sel.total(), isFullyPaid(sel));
         });
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
-            dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status()));
+            // COB-RECT (Benjamin: "por que la rectificativa 0006R sigue teniendo la
+            // opcion de cobro, cuando esta es la que salda la anulada"): una
+            // rectificativa en negativo no se cobra. Misma regla que pinta "—" en
+            // la columna Cobro (collectionNotApplicable).
+            dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())
+                    || newV.collectionNotApplicable());
             // Sin seleccion siguen activos (son herramientas generales). Con una
             // fila, solo si esa factura se puede cobrar: no PAGADA, ni anulada /
             // cancelada / borrador, ni rectificativa en negativo (Benjamin: "existen
@@ -867,6 +874,7 @@ public class BillingInvoicesScreen extends ScreenBase {
         return inv != null && "VALIDATED".equals(inv.status())
                 && !"PROFORMA".equals(inv.invoiceType())
                 && inv.total() != null && inv.total().signum() > 0
+                && !inv.collectionNotApplicable()
                 && !isFullyPaid(inv);
     }
 

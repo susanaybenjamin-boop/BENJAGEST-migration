@@ -388,4 +388,19 @@ class CobroDobleIntegrationTest {
         assertEquals("PAID", paymentStatusDe(inv), "la factura sigue cobrada");
         assertEquals("VOIDED", estadoAsiento(viejo), "el anulado no se borra");
     }
+
+    /** COB-RECT — la rectificativa que salda una anulada no se cobra (ni la anulada). */
+    @Test
+    void niLaAnuladaNiSuRectificativaSeCobran() {
+        String anulada = salesInvoice("AN-1", "PENDING", "0");
+        jdbc.update("UPDATE sales_invoices SET status = 'VOIDED' WHERE id = ?", anulada);
+        String rect = salesInvoice("AN-1R", "PENDING", "0");
+        jdbc.update("UPDATE sales_invoices SET total = -1210.00 WHERE id = ?", rect);
+        String vtoAnulada = dueDate("SALES", anulada, "1210.00");
+        String vtoRect = dueDate("SALES", rect, "-1210.00");
+
+        assertThrows(ResponseStatusException.class, () -> payments.pay(vtoAnulada, banco()));
+        assertThrows(ResponseStatusException.class, () -> payments.pay(vtoRect, banco()));
+        assertEquals(0, cobrosDe(vtoAnulada) + cobrosDe(vtoRect));
+    }
 }
