@@ -432,7 +432,12 @@ public class BillingInvoicesScreen extends ScreenBase {
             // Rectificar (parcial): mismas condiciones que Anular — solo
             // documentos fiscales validados (NORMAL o SIMPLIFIED).
             rectifyBtn.setDisable(!isValidated || isRectifying || isProforma || isHistorical);
-            pdfBtn.setDisable(newV == null || isDraft || isHistorical);
+            // COB-PDF-H (2026-10-18): una HISTORICA no genera PDF oficial (IMP-H),
+            // pero si tiene su PDF guardado (importado, o el de CONTENDO enlazado)
+            // se puede ABRIR. Antes el boton se apagaba para todas las historicas
+            // y FRA-2026-0009 no dejaba ver un PDF que estaba en disco.
+            boolean storedPdf = newV != null && Boolean.TRUE.equals(newV.pdfStored());
+            pdfBtn.setDisable(newV == null || isDraft || (isHistorical && !storedPdf));
             // "Convertir y validar": cualquier proforma en DRAFT o
             // VALIDATED. Editarla sigue siendo posible hasta que se
             // convierte (entra al editor con doble click).
@@ -520,9 +525,13 @@ public class BillingInvoicesScreen extends ScreenBase {
         });
         billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
             dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status()));
-            boolean paid = isFullyPaid(newV);
-            multiAllocBtn.setDisable(paid);
-            bankReconcileBtn.setDisable(paid);
+            // Sin seleccion siguen activos (son herramientas generales). Con una
+            // fila, solo si esa factura se puede cobrar: no PAGADA, ni anulada /
+            // cancelada / borrador, ni rectificativa en negativo (Benjamin: "existen
+            // anuladas y el boton de cobrar varias si se activa").
+            boolean blocked = newV != null && !isCollectable(newV);
+            multiAllocBtn.setDisable(blocked);
+            bankReconcileBtn.setDisable(blocked);
         });
 
         // OPTYPE-3 — clasificación fiscal del tipo de operación (para marcar una
@@ -851,6 +860,14 @@ public class BillingInvoicesScreen extends ScreenBase {
         Optional<ButtonType> ans = dialog.showAndWait();
         if (ans.isEmpty() || ans.get() != ButtonType.OK) return null;
         return simplified ? "R5" : causeCombo.getValue();
+    }
+
+    /** COB-PAID — se puede cobrar: VALIDADA, no proforma, importe positivo y no cobrada del todo. */
+    private static boolean isCollectable(SalesInvoiceSummary inv) {
+        return inv != null && "VALIDATED".equals(inv.status())
+                && !"PROFORMA".equals(inv.invoiceType())
+                && inv.total() != null && inv.total().signum() > 0
+                && !isFullyPaid(inv);
     }
 
     /** COB-PAID — la factura esta COBRADA del todo (payment_status = PAID). */

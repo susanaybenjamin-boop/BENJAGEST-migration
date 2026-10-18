@@ -741,6 +741,18 @@ public class ManualJournalEntryService {
                     ln.description(), ln.debit(), ln.credit());
         }
 
+        // COB-VOID-LINK (2026-10-18): si es el cobro/pago de un vencimiento, el
+        // vencimiento pasa a apuntar al asiento NUEVO. Antes seguía apuntando al
+        // anulado y "Deshacer pago" borraba ese anulado, dejaba vivo el bueno y
+        // ponía la factura pendiente con el cobro aún en los libros (13 casos
+        // en producción).
+        if ("DUE_DATE_PAYMENT".equals(original.sourceType()) && original.sourceId() != null) {
+            jdbcTemplate.update("""
+                    UPDATE invoice_due_dates SET journal_entry_id = ?
+                     WHERE id = ? AND company_id = ? AND journal_entry_id = ?
+                    """, newId, original.sourceId(), companyId, entryId);
+        }
+
         if (saveRule) {
             learnFromReclassify(original, target, newAccountId, userId);
         }

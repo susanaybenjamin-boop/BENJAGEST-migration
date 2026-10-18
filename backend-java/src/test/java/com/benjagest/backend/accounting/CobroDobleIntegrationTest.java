@@ -295,4 +295,97 @@ class CobroDobleIntegrationTest {
         cobrarVarias(inv, "1210.00");
         assertThrows(ResponseStatusException.class, () -> cobrarVarias(inv, "10.00"));
     }
+
+    // ====================================================================
+    //  COB-VOID-LINK — vencimiento cuyo asiento de cobro se anuló
+    // ====================================================================
+
+    private static ManualJournalEntryService manual() {
+        return new ManualJournalEntryService(jdbc, new FixedTenant(),
+                Mockito.mock(com.benjagest.backend.auth.CurrentUserService.class),
+                Mockito.mock(FiscalYearGuardService.class),
+                Mockito.mock(TerceroAccountResolverService.class),
+                Mockito.mock(AccountingLearningService.class),
+                Mockito.mock(com.benjagest.backend.accounting.importpdf.ImportedPdfStorageService.class),
+                Mockito.mock(com.benjagest.backend.purchases.pdfimport.PdfTextExtractor.class),
+                Mockito.mock(com.benjagest.backend.purchases.pdfimport.InvoiceFieldsExtractor.class));
+    }
+
+    private static String asientoDe(String dueDateId) {
+        return jdbc.queryForObject("SELECT journal_entry_id FROM invoice_due_dates WHERE id = ?",
+                String.class, dueDateId);
+    }
+
+    private static String estadoAsiento(String entryId) {
+        return jdbc.queryForObject("SELECT status FROM journal_entries WHERE id = ?", String.class, entryId);
+    }
+
+    /** Reclasificar el cobro mueve el enlace del vencimiento al asiento nuevo. */
+    @Test
+    void reclasificarElCobroReapuntaElVencimiento() {
+        String inv = salesInvoice("RV-1", "PENDING", "0");
+        String vto = dueDate("SALES", inv, "1210.00");
+        payments.pay(vto, banco());
+        String viejo = asientoDe(vto);
+        String linea572 = jdbc.queryForObject("""
+                SELECT l.id FROM journal_entry_lines l JOIN accounting_accounts a ON a.id = l.account_id
+                 WHERE l.journal_entry_id = ? AND a.code = '572'
+                """, String.class, viejo);
+        account("570", "Caja", "ASSET");
+        String caja = jdbc.queryForObject(
+                "SELECT id FROM accounting_accounts WHERE company_id = ? AND code = '570'", String.class, COMPANY);
+
+        var nuevo = manual().reclassifyPostedAccount(viejo, linea572, caja, "fue en efectivo", false);
+
+        assertEquals("VOIDED", estadoAsiento(viejo));
+        assertEquals(nuevo.id(), asientoDe(vto), "el vencimiento debe apuntar al asiento vivo");
+
+        // Y deshacer quita el VIVO y conserva el anulado como rastro.
+        payments.unpay(vto);
+        assertEquals("PENDING", paymentStatusDe(inv));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM journal_entries WHERE id = ?",
+                Integer.class, nuevo.id()), "el cobro vivo se va");
+        assertEquals("VOIDED", estadoAsiento(viejo), "el anulado se conserva");
+    }
+
+    /** Datos heredados: enlace al anulado + sustituto vivo con el mismo origen. */
+    @Test
+    void deshacerConEnlaceAlAnuladoQuitaElSustitutoVivo() {
+        String inv = salesInvoice("RV-2", "PENDING", "0");
+        String vto = dueDate("SALES", inv, "1210.00");
+        payments.pay(vto, banco());
+        String viejo = asientoDe(vto);
+        // Simula una reclasificacion ANTERIOR al arreglo: nuevo asiento con el
+        // mismo source_id, el viejo anulado y el vencimiento sin reapuntar.
+        String vivo = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO journal_entries (id, company_id, fiscal_year_id, entry_number, entry_date,
+                        concept, source_type, source_id, status)
+                SELECT ?, company_id, fiscal_year_id, entry_number + 1000, entry_date,
+                        'Cobro (reclasificado)', source_type, source_id, 'POSTED'
+                  FROM journal_entries WHERE id = ?
+                """, vivo, viejo);
+        jdbc.update("UPDATE journal_entries SET status = 'VOIDED' WHERE id = ?", viejo);
+
+        payments.unpay(vto);
+        assertEquals("PENDING", paymentStatusDe(inv));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM journal_entries WHERE id = ?",
+                Integer.class, vivo));
+        assertEquals("VOIDED", estadoAsiento(viejo));
+    }
+
+    /** Cobro anulado por DUPLICADO (el real es otro asiento): no se deshace. */
+    @Test
+    void deshacerUnCobroAnuladoPorDuplicadoSeRechaza() {
+        String inv = salesInvoice("RV-3", "PENDING", "0");
+        String vto = dueDate("SALES", inv, "1210.00");
+        payments.pay(vto, banco());
+        String viejo = asientoDe(vto);
+        jdbc.update("UPDATE journal_entries SET status = 'VOIDED' WHERE id = ?", viejo);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> payments.unpay(vto));
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertEquals("PAID", paymentStatusDe(inv), "la factura sigue cobrada");
+        assertEquals("VOIDED", estadoAsiento(viejo), "el anulado no se borra");
+    }
 }

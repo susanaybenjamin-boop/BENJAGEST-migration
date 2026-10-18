@@ -7045,9 +7045,22 @@ public class BenjagestUiApplication extends Application
             List<SalesInvoiceSummary> all = load.getValue();
             java.util.TreeSet<String> clients = new java.util.TreeSet<>();
             for (SalesInvoiceSummary inv : all) {
-                if (inv.customerLegalName() != null) clients.add(inv.customerLegalName());
+                // Solo clientes con algo que COBRAR de verdad: una rectificativa en
+                // negativo sale como "pendiente" pero no se cobra.
+                BigDecimal t0 = inv.total() == null ? BigDecimal.ZERO : inv.total();
+                BigDecimal p0 = inv.paidAmount() == null ? BigDecimal.ZERO : inv.paidAmount();
+                if (inv.customerLegalName() != null && t0.subtract(p0).signum() > 0) {
+                    clients.add(inv.customerLegalName());
+                }
             }
             clientCombo.getItems().setAll(clients);
+            // COB-PAID: sin nada pendiente el combo salia vacio sin explicacion y
+            // parecia roto (Benjamin: "el listado de clientes aparece en blanco").
+            if (clients.isEmpty()) {
+                clientCombo.setPromptText(t("multi_alloc.no_pending"));
+                clientCombo.setDisable(true);
+                table.setPlaceholder(new Label(t("multi_alloc.no_pending")));
+            }
             clientCombo.setOnAction(av -> {
                 String sel = clientCombo.getValue();
                 if (sel == null) return;
