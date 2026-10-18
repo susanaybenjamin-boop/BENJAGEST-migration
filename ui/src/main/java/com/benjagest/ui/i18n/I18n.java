@@ -1234,6 +1234,8 @@ public final class I18n {
                 case "list.action.void" -> "Void";
                 case "list.dialog.void.title" -> "Void validated invoice";
                 case "list.dialog.void.body" -> "A LINKED corrective invoice will be issued (lines negated) and the original will be marked VOIDED in the same transaction. This is a final legal act and cannot be undone or edited. Continue?";
+                case "list.dialog.void.paid_warning.title" -> "This invoice has collections";
+                case "list.dialog.void.paid_warning.body" -> "The invoice is collected (fully or partly). If you void it, the collection stays in the books and the customer will have a balance in their favour (account 430). If the money was returned to the customer, first use \"Undo payment\" in Due dates / collection and then void it. Void it anyway?";
                 case "list.dialog.void.success_prefix" -> "Corrective invoice issued with nº ";
                 case "list.dialog.void.success_suffix" -> ". The original invoice has been voided.";
                 case "list.dialog.void.failure.title" -> "Could not void";
@@ -2471,6 +2473,8 @@ public final class I18n {
             case "list.action.void" -> "Anular";
             case "list.dialog.void.title" -> "Anular factura validada";
             case "list.dialog.void.body" -> "Se EMITIRÁ una factura RECTIFICATIVA enlazada (líneas con cantidad invertida) y la original quedará ANULADA en la misma transacción. Es un acto legal y NO se puede deshacer ni editar. ¿Continuar?";
+            case "list.dialog.void.paid_warning.title" -> "Esta factura tiene cobros";
+            case "list.dialog.void.paid_warning.body" -> "La factura está cobrada (total o parcialmente). Si la anulas, el cobro sigue en los libros y el cliente quedará con saldo a su favor (cuenta 430). Si le has devuelto el dinero, primero usa \"Deshacer pago\" en Vencimientos / cobro y después anúlala. ¿Anularla igualmente?";
             case "list.dialog.void.success_prefix" -> "Rectificativa emitida con nº ";
             case "list.dialog.void.success_suffix" -> ". La factura original ha quedado anulada.";
             case "list.dialog.void.failure.title" -> "No se pudo anular";
@@ -7292,6 +7296,8 @@ public final class I18n {
             case "duedates.empty" -> "No due dates.";
             case "duedates.total" -> "Invoice total:";
             case "duedates.hint" -> "Split the invoice into due dates and settle each one against the bank (572) or cash (570). Use \"Pay in cash\" for tickets paid on the spot.";
+            case "duedates.locked.sales" -> "This invoice is already collected: it cannot be collected again. Here you can only review the collections and use \"Undo payment\" if the money was returned; the invoice will then be pending again.";
+            case "duedates.locked.purchase" -> "This invoice is already paid: it cannot be paid again. Here you can only review the payments and use \"Undo payment\" if the payment was returned; the invoice will then be pending again.";
             case "duedates.col.seq" -> "No.";
             case "duedates.col.due" -> "Due date";
             case "duedates.col.amount" -> "Amount";
@@ -8709,6 +8715,8 @@ public final class I18n {
             case "duedates.empty" -> "Sin vencimientos.";
             case "duedates.total" -> "Total factura:";
             case "duedates.hint" -> "Reparte la factura en vencimientos y salda cada uno contra el banco (572) o la caja (570). Usa \"Pagar al contado\" para tickets pagados en el momento.";
+            case "duedates.locked.sales" -> "Esta factura ya está cobrada: no se puede volver a cobrar. Aquí solo puedes consultar los cobros y usar \"Deshacer pago\" si se ha devuelto el dinero; entonces volverá a quedar pendiente.";
+            case "duedates.locked.purchase" -> "Esta factura ya está pagada: no se puede volver a pagar. Aquí solo puedes consultar los pagos y usar \"Deshacer pago\" si se ha devuelto el pago; entonces volverá a quedar pendiente.";
             case "duedates.col.seq" -> "Nº";
             case "duedates.col.due" -> "Vencimiento";
             case "duedates.col.amount" -> "Importe";

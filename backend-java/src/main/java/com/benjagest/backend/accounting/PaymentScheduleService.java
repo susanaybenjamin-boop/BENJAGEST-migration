@@ -143,6 +143,7 @@ public class PaymentScheduleService {
         DueDate dd = getOne(dueDateId);
         billingAgreementGuard.requireAgreementOrOwnForInvoiceKind(dd.invoiceKind());
         if ("PAID".equals(dd.status())) throw bad("Este vencimiento ya está pagado.");
+        requireOutstanding(companyId, dd);
         if (req.treasuryAccountCode() == null || req.treasuryAccountCode().isBlank()) {
             throw bad("Indica la cuenta de tesorería (Banco 572 / Caja 570).");
         }
@@ -189,6 +190,44 @@ public class PaymentScheduleService {
                     method, dueDateId, safeUserId());
         }
         return getOne(dueDateId);
+    }
+
+    /**
+     * COB-PAID — no se cobra/paga dos veces la misma factura.
+     *
+     * <p>Los vencimientos no son la única vía de cobro: "Cobrar varias"
+     * (MultiAllocationPaymentService) marca la venta PAID en
+     * {@code sales_invoices.paid_amount} sin tocar sus vencimientos, y
+     * "Registrar pago" (GAS-2) hace lo mismo con {@code purchase_invoices.paid}.
+     * En esos casos el vencimiento sigue PENDING (o lo crea ensureDefault por el
+     * total) y, sin este guard, se podía cobrar otra vez generando un segundo
+     * asiento. Se rechaza el cobro si excede lo que de verdad queda pendiente.
+     * Para volver a cobrar hay que deshacer antes el cobro existente.
+     */
+    private void requireOutstanding(String companyId, DueDate dd) {
+        if ("SALES".equals(dd.invoiceKind())) {
+            List<BigDecimal[]> rows = jdbc.query("""
+                    SELECT total, COALESCE(paid_amount, 0) AS paid FROM sales_invoices
+                     WHERE id = ? AND company_id = ?
+                    """, (rs, n) -> new BigDecimal[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid")},
+                    dd.invoiceId(), companyId);
+            if (rows.isEmpty() || rows.get(0)[0] == null) return;
+            BigDecimal pending = rows.get(0)[0].subtract(rows.get(0)[1]);
+            if (dd.amount().subtract(pending).compareTo(new BigDecimal("0.01")) > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, pending.signum() <= 0
+                        ? "La factura ya está cobrada. Para volver a cobrarla, deshaz antes el cobro."
+                        : "El vencimiento (" + dd.amount().toPlainString() + ") supera lo pendiente de la factura ("
+                          + pending.toPlainString() + "). Ajusta el cuadro de vencimientos.");
+            }
+        } else if ("PURCHASE".equals(dd.invoiceKind())) {
+            Boolean paid = jdbc.query("""
+                    SELECT paid FROM purchase_invoices WHERE id = ? AND company_id = ?
+                    """, rs -> rs.next() ? rs.getBoolean("paid") : null, dd.invoiceId(), companyId);
+            if (Boolean.TRUE.equals(paid)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La factura ya está pagada. Para volver a pagarla, deshaz antes el pago.");
+            }
+        }
     }
 
     /**
