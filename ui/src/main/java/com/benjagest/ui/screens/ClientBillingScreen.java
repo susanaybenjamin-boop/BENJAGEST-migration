@@ -37,6 +37,11 @@ public class ClientBillingScreen extends ScreenBase {
          */
         void openDueDatesDialog(String kind, String invoiceId, String partyName,
                                 java.math.BigDecimal total);
+        /** COB-PAID — igual, pero con la factura ya cobrada: solo consulta y "Deshacer cobro". */
+        default void openDueDatesDialog(String kind, String invoiceId, String partyName,
+                                        java.math.BigDecimal total, boolean collectLocked) {
+            openDueDatesDialog(kind, invoiceId, partyName, total);
+        }
         void applyBillingGate(boolean sales, javafx.scene.layout.VBox bannerHolder,
                               javafx.scene.control.ButtonBase... toDisable);
     }
@@ -244,7 +249,7 @@ public class ClientBillingScreen extends ScreenBase {
             var sel = table.getSelectionModel().getSelectedItem();
             if (sel == null) return;
             host.openDueDatesDialog("SALES", sel.id(),
-                    sel.customerLegalName(), sel.total());
+                    sel.customerLegalName(), sel.total(), "PAID".equals(sel.paymentStatus()));
         });
 
         // Fila muy cargada (3 filtros etiqueta+control + 5 botones): en un HBox

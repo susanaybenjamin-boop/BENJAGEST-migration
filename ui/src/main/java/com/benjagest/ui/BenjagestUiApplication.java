@@ -4801,6 +4801,19 @@ public class BenjagestUiApplication extends Application
 
     private void openDueDatesDialog(String kind, String invoiceId,
                                      String partyName, java.math.BigDecimal total) {
+        openDueDatesDialog(kind, invoiceId, partyName, total, false);
+    }
+
+    /**
+     * COB-PAID — {@code collectLocked}: la factura ya esta COBRADA. El dialogo
+     * se abre solo para consultar los cobros y, si hace falta, "Deshacer cobro"
+     * (la devolucion). No se puede cobrar de nuevo ni rehacer el cuadro; al
+     * deshacer, la factura vuelve a pendiente y el listado (TOPIC_SALES) la
+     * reabre al cobro. El backend tiene el mismo guard (requireOutstanding).
+     */
+    private void openDueDatesDialog(String kind, String invoiceId,
+                                     String partyName, java.math.BigDecimal total,
+                                     boolean collectLocked) {
         // AGR-2: cobros/pagos (vencimientos) requieren acuerdo de facturación.
         if (!ensureBillingAllowed(!"PURCHASE".equals(kind))) return;
         javafx.scene.control.Dialog<ButtonType> dlg = new javafx.scene.control.Dialog<>();
@@ -4882,10 +4895,11 @@ public class BenjagestUiApplication extends Application
         table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             boolean pending = b != null && "PENDING".equals(b.status());
             boolean paid = b != null && "PAID".equals(b.status());
-            payBtn.setDisable(!pending);
-            cashBtn.setDisable(!pending);
+            payBtn.setDisable(!pending || collectLocked);
+            cashBtn.setDisable(!pending || collectLocked);
             unpayBtn.setDisable(!paid);
         });
+        editBtn.setDisable(collectLocked);
 
         Label info = new Label(t("duedates.total") + " " + eur(total));
         info.setStyle("-fx-font-weight: bold;");
@@ -4895,6 +4909,14 @@ public class BenjagestUiApplication extends Application
         hint.getStyleClass().add("settings-hint");
 
         VBox content = new VBox(10, info, hint, actions, table);
+        if (collectLocked) {
+            Label locked = new Label(t("SALES".equals(kind)
+                    ? "duedates.locked.sales" : "duedates.locked.purchase"));
+            locked.setWrapText(true);
+            locked.getStyleClass().add("settings-hint");
+            locked.setStyle("-fx-font-weight: bold;");
+            content.getChildren().add(2, locked);
+        }
         content.setPadding(new Insets(12));
         VBox.setVgrow(table, Priority.ALWAYS);
         dlg.getDialogPane().setContent(content);
@@ -6693,6 +6715,10 @@ public class BenjagestUiApplication extends Application
                     @Override public void openDueDatesDialog(String kind, String invoiceId,
                             String partyName, java.math.BigDecimal total) {
                         BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total);
+                    }
+                    @Override public void openDueDatesDialog(String kind, String invoiceId,
+                            String partyName, java.math.BigDecimal total, boolean collectLocked) {
+                        BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total, collectLocked);
                     }
                     @Override public void openRecurringEditorFromInvoice(String kind, String partyNif,
                             String partyName, java.math.BigDecimal total, java.time.LocalDate invoiceDate) {
@@ -14577,6 +14603,10 @@ public class BenjagestUiApplication extends Application
                     @Override public void openDueDatesDialog(String kind, String invoiceId,
                             String partyName, java.math.BigDecimal total) {
                         BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total);
+                    }
+                    @Override public void openDueDatesDialog(String kind, String invoiceId,
+                            String partyName, java.math.BigDecimal total, boolean collectLocked) {
+                        BenjagestUiApplication.this.openDueDatesDialog(kind, invoiceId, partyName, total, collectLocked);
                     }
                     @Override public void applyBillingGate(boolean sales, javafx.scene.layout.VBox bannerHolder,
                             javafx.scene.control.ButtonBase... toDisable) {

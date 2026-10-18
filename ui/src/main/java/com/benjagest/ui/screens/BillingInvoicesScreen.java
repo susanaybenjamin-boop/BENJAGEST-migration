@@ -44,6 +44,11 @@ public class BillingInvoicesScreen extends ScreenBase {
         void showBankReconciliationDialog();
         /** Diálogo de vencimientos (cobro por plazos). Compartido con Compras. */
         void openDueDatesDialog(String kind, String invoiceId, String partyName, java.math.BigDecimal total);
+        /** COB-PAID — igual, pero con la factura ya cobrada: solo consulta y "Deshacer cobro". */
+        default void openDueDatesDialog(String kind, String invoiceId, String partyName,
+                                        java.math.BigDecimal total, boolean collectLocked) {
+            openDueDatesDialog(kind, invoiceId, partyName, total);
+        }
         /** Editor de plantilla recurrente desde una factura. Compartido. */
         void openRecurringEditorFromInvoice(String kind, String partyNif, String partyName,
                                             java.math.BigDecimal total, LocalDate invoiceDate);
@@ -487,7 +492,9 @@ public class BillingInvoicesScreen extends ScreenBase {
 
         // MULTI-ALLOCATION (#67) — boton para registrar un pago real
         // que se reparte entre varias facturas VALIDATED pendientes del
-        // mismo cliente. Siempre habilitado.
+        // mismo cliente. Es una herramienta general (no usa la fila), pero
+        // COB-PAID: se apaga si la fila seleccionada ya esta COBRADA, para no
+        // invitar a cobrarla otra vez. Sin seleccion sigue activo.
         Button multiAllocBtn = new Button(t("list.action.multi_allocation"));
         multiAllocBtn.setGraphic(icon("fas-coins"));
         multiAllocBtn.setOnAction(ev -> host.showMultiAllocationDialog());
@@ -504,13 +511,19 @@ public class BillingInvoicesScreen extends ScreenBase {
         Button dueDatesSalesBtn = new Button(t("duedates.action.open_sales"));
         dueDatesSalesBtn.setGraphic(icon("fas-calendar-check"));
         dueDatesSalesBtn.setDisable(true);
+        // COB-PAID: sobre una factura COBRADA sigue activo, pero el dialogo se
+        // abre bloqueado (solo consulta + "Deshacer cobro" = la devolucion).
         dueDatesSalesBtn.setOnAction(ev -> {
             SalesInvoiceSummary sel = billingTable.getSelectionModel().getSelectedItem();
             if (sel != null) host.openDueDatesDialog("SALES", sel.id(),
-                    sel.customerLegalName(), sel.total());
+                    sel.customerLegalName(), sel.total(), isFullyPaid(sel));
         });
-        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
-                dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status())));
+        billingTable.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            dueDatesSalesBtn.setDisable(newV == null || !"VALIDATED".equals(newV.status()));
+            boolean paid = isFullyPaid(newV);
+            multiAllocBtn.setDisable(paid);
+            bankReconcileBtn.setDisable(paid);
+        });
 
         // OPTYPE-3 — clasificación fiscal del tipo de operación (para marcar una
         // entrega intracomunitaria → clave E del modelo 349). Solo tiene sentido
@@ -840,8 +853,28 @@ public class BillingInvoicesScreen extends ScreenBase {
         return simplified ? "R5" : causeCombo.getValue();
     }
 
+    /** COB-PAID — la factura esta COBRADA del todo (payment_status = PAID). */
+    private static boolean isFullyPaid(SalesInvoiceSummary inv) {
+        return inv != null && "PAID".equals(inv.paymentStatus());
+    }
+
     private void voidInvoiceFromList(SalesInvoiceSummary sel) {
         if (!host.ensureBillingAllowed(true)) return; // AGR-2
+        // COB-PAID — anular una factura con cobros: el cobro (Debe 572 / Haber
+        // 430) sigue en los libros y la rectificativa deja al cliente con saldo
+        // a su favor en la 430. Si el dinero se le ha devuelto, lo correcto es
+        // "Deshacer cobro" en Vencimientos ANTES de anular. Solo avisamos (no
+        // bloqueamos): un cobro de "Cobrar varias" no se puede deshacer desde
+        // Vencimientos y la factura quedaria imposible de anular.
+        if ("PAID".equals(sel.paymentStatus()) || "PARTIAL".equals(sel.paymentStatus())) {
+            Alert warn = new Alert(Alert.AlertType.WARNING, t("list.dialog.void.paid_warning.body"),
+                    ButtonType.OK, ButtonType.CANCEL);
+            warn.setTitle(t("list.dialog.void.paid_warning.title"));
+            warn.setHeaderText(t("list.dialog.void.paid_warning.title"));
+            warn.getDialogPane().setPrefWidth(560);
+            Optional<ButtonType> ans = warn.showAndWait();
+            if (ans.isEmpty() || ans.get() != ButtonType.OK) return;
+        }
         String cause = askRectificationCause(sel, "list.dialog.void.title", "list.dialog.void.body");
         if (cause == null) return;
 
