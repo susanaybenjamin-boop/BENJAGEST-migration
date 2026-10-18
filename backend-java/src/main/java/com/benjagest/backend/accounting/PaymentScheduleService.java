@@ -366,6 +366,61 @@ public class PaymentScheduleService {
         }
     }
 
+    /**
+     * COB-MULTI — cobra {@code amount} de una factura contra sus vencimientos
+     * PENDIENTES, del más antiguo al más nuevo, por el MISMO camino que el
+     * diálogo de Vencimientos ({@link #pay}): cada vencimiento saldado lleva su
+     * asiento de cobro/pago, su reflejo y la proyección del estado de la factura.
+     * Si el importe no cubre entero el último vencimiento, se PARTE: el
+     * vencimiento queda por lo cobrado y el resto pasa a uno nuevo PENDIENTE con
+     * la misma fecha. Devuelve los vencimientos saldados (ids), en orden.
+     *
+     * <p>Lo usa "Cobrar varias": antes marcaba la factura PAGADA sin asiento ni
+     * vencimientos, y la factura salía pendiente en Vencimientos y en la 430.
+     */
+    @Transactional
+    public List<String> settleAmount(String invoiceKind, String invoiceId, BigDecimal amount,
+                                     PayRequest req) {
+        kindCheck(invoiceKind);
+        if (amount == null || amount.signum() <= 0) throw bad("Importe de cobro inválido.");
+        String companyId = tenant.getCurrentCompanyId();
+        ensureDefault(invoiceKind, invoiceId);
+        List<DueDate> pend = jdbc.query("""
+                SELECT id, invoice_id, invoice_kind, seq, due_date, amount, status,
+                       paid_date, payment_method, treasury_account_code, journal_entry_id, notes
+                  FROM invoice_due_dates
+                 WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ? AND status = 'PENDING'
+                 ORDER BY seq
+                """, this::map, companyId, invoiceKind, invoiceId);
+        BigDecimal remaining = amount;
+        List<String> settled = new java.util.ArrayList<>();
+        for (DueDate dd : pend) {
+            if (remaining.signum() <= 0) break;
+            if (remaining.compareTo(dd.amount()) < 0) {
+                // Partir: este vencimiento se queda en lo cobrado; el resto, a uno nuevo.
+                BigDecimal rest = dd.amount().subtract(remaining);
+                jdbc.update("UPDATE invoice_due_dates SET amount = ? WHERE id = ? AND company_id = ?",
+                        remaining, dd.id(), companyId);
+                Integer maxSeq = jdbc.queryForObject("""
+                        SELECT COALESCE(MAX(seq), 0) FROM invoice_due_dates
+                         WHERE company_id = ? AND invoice_kind = ? AND invoice_id = ?
+                        """, Integer.class, companyId, invoiceKind, invoiceId);
+                insertDueDate(invoiceKind, invoiceId, (maxSeq == null ? 0 : maxSeq) + 1,
+                        dd.dueDate(), rest, dd.notes());
+                remaining = BigDecimal.ZERO;
+            } else {
+                remaining = remaining.subtract(dd.amount());
+            }
+            pay(dd.id(), req);
+            settled.add(dd.id());
+        }
+        if (remaining.compareTo(new BigDecimal("0.01")) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El cobro (" + amount.toPlainString() + ") supera lo pendiente en los vencimientos de la factura.");
+        }
+        return settled;
+    }
+
     /** Revierte el pago de un vencimiento (borra el asiento, vuelve a PENDING). */
     @Transactional
     public DueDate unpay(String dueDateId) {
@@ -386,6 +441,9 @@ public class PaymentScheduleService {
                  WHERE id = ? AND company_id = ?
                 """, dueDateId, companyId);
         if ("SALES".equals(dd.invoiceKind())) {
+            // COB-MULTI: si el cobro vino de "Cobrar varias", su fila del registro
+            // de cobros (la que identifica la transferencia) se va con él.
+            jdbc.update("DELETE FROM sales_invoice_payments WHERE due_date_id = ?", dueDateId);
             syncSalesPaymentStatus(dd.invoiceId());
             // REFLEJO-3b: deshacer el cobro de VENTA revierte el PAGO reflejado en el cliente.
             reflectionService.reflectUnpayPayment(dd.invoiceId(), dueDateId, safeUserId());

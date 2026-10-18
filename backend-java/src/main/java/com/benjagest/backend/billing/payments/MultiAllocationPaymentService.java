@@ -35,16 +35,33 @@ public class MultiAllocationPaymentService {
     private final com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService;
     private final com.benjagest.backend.auth.CurrentUserService currentUserService;
     private final com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard;
+    private final com.benjagest.backend.accounting.PaymentScheduleService paymentSchedule;
 
     public MultiAllocationPaymentService(JdbcTemplate jdbc, TenantContext tenant,
             com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService reflectionService,
             com.benjagest.backend.auth.CurrentUserService currentUserService,
-            com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard) {
+            com.benjagest.backend.billing.tpb.BillingAgreementGuard billingAgreementGuard,
+            com.benjagest.backend.accounting.PaymentScheduleService paymentSchedule) {
         this.jdbc = jdbc;
         this.tenant = tenant;
         this.reflectionService = reflectionService;
         this.currentUserService = currentUserService;
         this.billingAgreementGuard = billingAgreementGuard;
+        this.paymentSchedule = paymentSchedule;
+    }
+
+    /**
+     * COB-MULTI — método de "Cobrar varias" → método del vencimiento (la UI de
+     * Vencimientos traduce {@code duedates.method.*}: TRANSFER/CASH/CARD/BIZUM/OTHER).
+     */
+    static String dueDateMethod(String method) {
+        if (method == null) return "TRANSFER";
+        return switch (method) {
+            case "BANK_TRANSFER", "DIRECT_DEBIT" -> "TRANSFER";
+            case "CASH" -> "CASH";
+            case "CARD" -> "CARD";
+            default -> "OTHER";
+        };
     }
 
     @Transactional
@@ -74,7 +91,6 @@ public class MultiAllocationPaymentService {
                             + req.totalAmount() + ")");
         }
         String companyId = tenant.getCurrentCompanyId();
-        String reflectUserId = currentUserService.require().userId();
         String paymentId = UUID.randomUUID().toString();
         for (Allocation alloc : req.allocations()) {
             if (alloc.invoiceId() == null || alloc.invoiceId().isBlank()) {
@@ -87,14 +103,15 @@ public class MultiAllocationPaymentService {
             }
             // Verificar factura pertenece a empresa + estado válido para pago
             var invoice = jdbc.query("""
-                    SELECT total, paid_amount, status
+                    SELECT total, paid_amount, status, invoice_number
                       FROM sales_invoices
                      WHERE id = ? AND company_id = ?
                     """, rs -> {
                 if (rs.next()) {
                     return new Object[]{rs.getBigDecimal("total"),
                             rs.getBigDecimal("paid_amount"),
-                            rs.getString("status")};
+                            rs.getString("status"),
+                            rs.getString("invoice_number")};
                 }
                 return null;
             }, alloc.invoiceId(), companyId);
@@ -116,37 +133,40 @@ public class MultiAllocationPaymentService {
                         "Importe " + alloc.amount() + " excede pendiente "
                                 + pending + " de la factura " + alloc.invoiceId());
             }
-            // Insertar la allocation
-            String payRowId = UUID.randomUUID().toString();
-            jdbc.update("""
-                    INSERT INTO sales_invoice_payments
-                           (id, invoice_id, payment_date, amount, payment_method,
-                            reference, notes, payment_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    payRowId,
-                    alloc.invoiceId(),
-                    java.sql.Date.valueOf(req.paymentDate()),
+            // COB-MULTI (2026-10-18) — el cobro va por VENCIMIENTOS, el mismo
+            // camino que el diálogo de Vencimientos: asiento 572/430 (570 si es
+            // en efectivo), vencimiento saldado, reflejo en el cliente y estado
+            // de la factura proyectado desde los vencimientos. Antes solo se
+            // apuntaba aquí y se ponía la factura PAGADA a mano: sin asiento, y
+            // Vencimientos la seguía viendo PENDIENTE (Benjamin, smoke 0.1.66).
+            String number = (String) invoice[3];
+            String concept = "Cobro fra. " + (number == null ? "" : number)
+                    + (req.reference() == null || req.reference().isBlank()
+                        ? "" : " - " + req.reference().trim());
+            List<String> settled = paymentSchedule.settleAmount("SALES", alloc.invoiceId(),
                     alloc.amount().setScale(2, RoundingMode.HALF_UP),
-                    req.paymentMethod(), req.reference(), req.notes(),
-                    paymentId);
-            // Recalcular paid_amount + payment_status
-            BigDecimal newPaid = (paid == null ? BigDecimal.ZERO : paid).add(alloc.amount());
-            String newStatus;
-            int cmp = newPaid.compareTo(total);
-            if (cmp >= 0) newStatus = "PAID";
-            else if (newPaid.signum() > 0) newStatus = "PARTIAL";
-            else newStatus = "PENDING";
-            jdbc.update("""
-                    UPDATE sales_invoices
-                       SET paid_amount = ?, payment_status = ?
-                     WHERE id = ? AND company_id = ?
-                    """, newPaid, newStatus, alloc.invoiceId(), companyId);
-
-            // REFLEJO-4: reflejar el cobro como pago del gasto en el cliente
-            // (por validar). Best-effort, nunca rompe el registro del cobro.
-            reflectionService.reflectPayment(alloc.invoiceId(), alloc.amount(),
-                    req.paymentDate(), req.paymentMethod(), payRowId, reflectUserId);
+                    new com.benjagest.backend.accounting.PaymentScheduleService.PayRequest(
+                            "CASH".equals(req.paymentMethod()) ? "570" : "572",
+                            req.paymentDate(), dueDateMethod(req.paymentMethod()), concept));
+            // Registro del cobro: una fila POR VENCIMIENTO saldado, todas con el
+            // mismo payment_id (identifican la transferencia en el extracto) y
+            // enlazadas al vencimiento, para que "Deshacer pago" las borre.
+            for (String dueDateId : settled) {
+                BigDecimal ddAmount = jdbc.queryForObject(
+                        "SELECT amount FROM invoice_due_dates WHERE id = ?", BigDecimal.class, dueDateId);
+                jdbc.update("""
+                        INSERT INTO sales_invoice_payments
+                               (id, invoice_id, payment_date, amount, payment_method,
+                                reference, notes, payment_id, due_date_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        UUID.randomUUID().toString(),
+                        alloc.invoiceId(),
+                        java.sql.Date.valueOf(req.paymentDate()),
+                        ddAmount,
+                        req.paymentMethod(), req.reference(), req.notes(),
+                        paymentId, dueDateId);
+            }
         }
         return new PaymentRegistrationResult(paymentId, req.allocations().size(),
                 req.totalAmount());

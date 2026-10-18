@@ -39,6 +39,7 @@ class CobroDobleIntegrationTest {
     private static DB db;
     private static JdbcTemplate jdbc;
     private static PaymentScheduleService payments;
+    private static com.benjagest.backend.billing.payments.MultiAllocationPaymentService multi;
 
     private static final class FixedTenant implements TenantContext {
         @Override public String getCurrentCompanyId() { return COMPANY; }
@@ -66,6 +67,12 @@ class CobroDobleIntegrationTest {
                 Mockito.mock(com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService.class),
                 Mockito.mock(com.benjagest.backend.billing.tpb.BillingAgreementGuard.class),
                 new InvoiceCounterpartyAccountResolver(jdbc));
+        multi = new com.benjagest.backend.billing.payments.MultiAllocationPaymentService(jdbc,
+                new FixedTenant(),
+                Mockito.mock(com.benjagest.backend.billing.reflection.CrossInvoiceReflectionService.class),
+                Mockito.mock(com.benjagest.backend.auth.CurrentUserService.class),
+                Mockito.mock(com.benjagest.backend.billing.tpb.BillingAgreementGuard.class),
+                payments);
 
         jdbc.update("""
                 INSERT INTO companies (id, legal_name, company_type, legal_form)
@@ -138,7 +145,10 @@ class CobroDobleIntegrationTest {
         return new PaymentScheduleService.PayRequest("572", LocalDate.of(2026, 3, 15), "TRANSFER", null);
     }
 
-    /** El caso real: cobrada por "Cobrar varias", vencimiento aun PENDING. */
+    /**
+     * Datos HEREDADOS: una venta que el "Cobrar varias" de antes de COB-MULTI dejó
+     * PAGADA sin tocar su vencimiento (sigue PENDING).
+     */
     @Test
     void unaVentaCobradaPorCobrarVariasNoSeCobraOtraVezPorVencimientos() {
         String inv = salesInvoice("CD-1", "PAID", "1210.00");
@@ -195,5 +205,94 @@ class CobroDobleIntegrationTest {
                 () -> payments.pay(vto, banco()));
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         assertEquals(0, cobrosDe(vto));
+    }
+
+    // ====================================================================
+    //  COB-MULTI — "Cobrar varias" cobra por vencimientos
+    // ====================================================================
+
+    private static int filasCobrarVarias(String invoiceId) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM sales_invoice_payments WHERE invoice_id = ? AND due_date_id IS NOT NULL",
+                Integer.class, invoiceId);
+        return n == null ? 0 : n;
+    }
+
+    private static java.util.List<java.util.Map<String, Object>> vencimientosDe(String invoiceId) {
+        return jdbc.queryForList("""
+                SELECT id, amount, status, journal_entry_id FROM invoice_due_dates
+                 WHERE invoice_kind = 'SALES' AND invoice_id = ? ORDER BY seq
+                """, invoiceId);
+    }
+
+    private static void cobrarVarias(String invoiceId, String amount) {
+        multi.registerMultiAllocation(new com.benjagest.backend.billing.payments
+                .MultiAllocationPaymentService.MultiAllocationRequest(
+                LocalDate.of(2026, 3, 20), new BigDecimal(amount), "BANK_TRANSFER", "TRF-77", null,
+                java.util.List.of(new com.benjagest.backend.billing.payments
+                        .MultiAllocationPaymentService.Allocation(invoiceId, new BigDecimal(amount)))));
+    }
+
+    /** El cobro completo salda el vencimiento con asiento, y Vencimientos lo ve PAGADO. */
+    @Test
+    void cobrarVariasSaldaElVencimientoConAsiento() {
+        String inv = salesInvoice("CV-1", "PENDING", "0");
+        cobrarVarias(inv, "1210.00");
+
+        var vtos = vencimientosDe(inv);
+        assertEquals(1, vtos.size());
+        assertEquals("PAID", vtos.get(0).get("status"), "Vencimientos debe verla cobrada");
+        String vto = (String) vtos.get(0).get("id");
+        assertEquals(1, cobrosDe(vto), "el cobro debe tener su asiento 572/430");
+        assertEquals("PAID", paymentStatusDe(inv));
+        assertEquals(1, filasCobrarVarias(inv), "el registro del cobro queda enlazado al vencimiento");
+        String concepto = jdbc.queryForObject("""
+                SELECT concept FROM journal_entries WHERE source_id = ?
+                """, String.class, vto);
+        assertEquals("Cobro fra. CV-1 - TRF-77", concepto);
+    }
+
+    /** Cobro parcial: el vencimiento se parte en lo cobrado + un resto PENDIENTE. */
+    @Test
+    void cobrarVariasParcialParteElVencimiento() {
+        String inv = salesInvoice("CV-2", "PENDING", "0");
+        cobrarVarias(inv, "500.00");
+
+        var vtos = vencimientosDe(inv);
+        assertEquals(2, vtos.size(), "debe quedar el cobrado + el resto pendiente");
+        assertEquals("PAID", vtos.get(0).get("status"));
+        assertEquals(0, new BigDecimal("500.00").compareTo((BigDecimal) vtos.get(0).get("amount")));
+        assertEquals("PENDING", vtos.get(1).get("status"));
+        assertEquals(0, new BigDecimal("710.00").compareTo((BigDecimal) vtos.get(1).get("amount")));
+        assertEquals("PARTIAL", paymentStatusDe(inv));
+
+        // Y el resto se puede cobrar después por Vencimientos.
+        payments.pay((String) vtos.get(1).get("id"), banco());
+        assertEquals("PAID", paymentStatusDe(inv));
+    }
+
+    /** Deshacer un cobro de "Cobrar varias": fuera asiento y registro, factura pendiente. */
+    @Test
+    void deshacerUnCobroDeCobrarVariasLoQuitaDelTodo() {
+        String inv = salesInvoice("CV-3", "PENDING", "0");
+        cobrarVarias(inv, "1210.00");
+        String vto = (String) vencimientosDe(inv).get(0).get("id");
+
+        payments.unpay(vto);
+        assertEquals("PENDING", paymentStatusDe(inv));
+        assertEquals(0, cobrosDe(vto), "sin asiento de cobro");
+        assertEquals(0, filasCobrarVarias(inv), "sin fila en el registro de cobros");
+
+        // Devuelto el cobro, se puede volver a cobrar (otra vez por Cobrar varias).
+        cobrarVarias(inv, "1210.00");
+        assertEquals("PAID", paymentStatusDe(inv));
+    }
+
+    /** No se puede cobrar por "Cobrar varias" más de lo pendiente. */
+    @Test
+    void cobrarVariasNoCobraMasDeLoPendiente() {
+        String inv = salesInvoice("CV-4", "PENDING", "0");
+        cobrarVarias(inv, "1210.00");
+        assertThrows(ResponseStatusException.class, () -> cobrarVarias(inv, "10.00"));
     }
 }
