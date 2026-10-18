@@ -4870,6 +4870,12 @@ public class BenjagestUiApplication extends Application
                 payDueDate(sel.id(), "570", LocalDate.now(), "CASH", reload);
             }
         });
+        // COB-PAID: el bloqueo es una PROPIEDAD, no un valor fijo de apertura.
+        // Al "Deshacer pago" la factura deja de estar cobrada y el dialogo tiene
+        // que reabrirse al cobro sin cerrarlo (fallo cazado por Benjamin en el
+        // smoke: habia que cerrar y volver a abrir para poder cobrar otra vez).
+        javafx.beans.property.BooleanProperty lockedProp =
+                new javafx.beans.property.SimpleBooleanProperty(collectLocked);
         Button unpayBtn = new Button(t("duedates.action.unpay"));
         unpayBtn.setDisable(true);
         unpayBtn.setOnAction(ev -> {
@@ -4880,7 +4886,7 @@ public class BenjagestUiApplication extends Application
                     return dueDateApi.unpay(sel.id());
                 }
             };
-            tk.setOnSucceeded(e -> { reload.run(); com.benjagest.ui.support.RefreshBus.emit(
+            tk.setOnSucceeded(e -> { lockedProp.set(false); reload.run(); com.benjagest.ui.support.RefreshBus.emit(
                     com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL,
                     com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
                     com.benjagest.ui.support.RefreshBus.TOPIC_PURCHASES); });
@@ -4892,14 +4898,18 @@ public class BenjagestUiApplication extends Application
         Button refreshBtn = new Button(t("duedates.action.refresh"));
         refreshBtn.setOnAction(ev -> reload.run());
 
-        table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
+        Runnable syncButtons = () -> {
+            var b = table.getSelectionModel().getSelectedItem();
             boolean pending = b != null && "PENDING".equals(b.status());
             boolean paid = b != null && "PAID".equals(b.status());
-            payBtn.setDisable(!pending || collectLocked);
-            cashBtn.setDisable(!pending || collectLocked);
+            payBtn.setDisable(!pending || lockedProp.get());
+            cashBtn.setDisable(!pending || lockedProp.get());
             unpayBtn.setDisable(!paid);
-        });
-        editBtn.setDisable(collectLocked);
+            editBtn.setDisable(lockedProp.get());
+        };
+        table.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> syncButtons.run());
+        lockedProp.addListener((o, a, b) -> syncButtons.run());
+        syncButtons.run();
 
         Label info = new Label(t("duedates.total") + " " + eur(total));
         info.setStyle("-fx-font-weight: bold;");
@@ -4915,6 +4925,9 @@ public class BenjagestUiApplication extends Application
             locked.setWrapText(true);
             locked.getStyleClass().add("settings-hint");
             locked.setStyle("-fx-font-weight: bold;");
+            // El aviso desaparece en cuanto se deshace el cobro.
+            locked.visibleProperty().bind(lockedProp);
+            locked.managedProperty().bind(lockedProp);
             content.getChildren().add(2, locked);
         }
         content.setPadding(new Insets(12));
@@ -7122,8 +7135,10 @@ public class BenjagestUiApplication extends Application
                 save.setOnSucceeded(s -> {
                     showInfo(t("multi_alloc.ok.title"),
                             t("multi_alloc.ok.body") + " " + allocs.size());
+                    // COB-MULTI: el cobro ya genera asiento 572/430 -> Contabilidad también.
                     com.benjagest.ui.support.RefreshBus.emit(
-                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES);
+                            com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
+                            com.benjagest.ui.support.RefreshBus.TOPIC_JOURNAL);
                     dlg.close();
                 });
                 save.setOnFailed(s -> showError(t("multi_alloc.save.fail"),
