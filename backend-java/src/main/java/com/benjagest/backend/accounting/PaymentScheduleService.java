@@ -207,11 +207,21 @@ public class PaymentScheduleService {
     private void requireOutstanding(String companyId, DueDate dd) {
         if ("SALES".equals(dd.invoiceKind())) {
             List<BigDecimal[]> rows = jdbc.query("""
-                    SELECT total, COALESCE(paid_amount, 0) AS paid FROM sales_invoices
+                    SELECT total, COALESCE(paid_amount, 0) AS paid,
+                           CASE WHEN status = 'VOIDED' THEN 1 ELSE 0 END AS voided
+                      FROM sales_invoices
                      WHERE id = ? AND company_id = ?
-                    """, (rs, n) -> new BigDecimal[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid")},
+                    """, (rs, n) -> new BigDecimal[]{rs.getBigDecimal("total"), rs.getBigDecimal("paid"),
+                            rs.getBigDecimal("voided")},
                     dd.invoiceId(), companyId);
             if (rows.isEmpty() || rows.get(0)[0] == null) return;
+            // COB-RECT: ni una anulada ni una rectificativa en negativo se cobran
+            // (la rectificativa es la que salda la anulada: el par netea a 0).
+            if (rows.get(0)[2].signum() > 0 || rows.get(0)[0].signum() <= 0 || dd.amount().signum() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Esta factura no se cobra: es una anulada o una rectificativa en negativo "
+                        + "(la rectificativa salda la factura anulada).");
+            }
             BigDecimal pending = rows.get(0)[0].subtract(rows.get(0)[1]);
             if (dd.amount().subtract(pending).compareTo(new BigDecimal("0.01")) > 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, pending.signum() <= 0
@@ -428,10 +438,11 @@ public class PaymentScheduleService {
         DueDate dd = getOne(dueDateId);
         billingAgreementGuard.requireAgreementOrOwnForInvoiceKind(dd.invoiceKind());
         if (!"PAID".equals(dd.status())) throw bad("Este vencimiento no está pagado.");
-        if (dd.journalEntryId() != null) {
-            jdbc.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", dd.journalEntryId());
+        String entryToRemove = resolveLiveEntry(companyId, dd);
+        if (entryToRemove != null) {
+            jdbc.update("DELETE FROM journal_entry_lines WHERE journal_entry_id = ?", entryToRemove);
             jdbc.update("DELETE FROM journal_entries WHERE id = ? AND company_id = ?",
-                    dd.journalEntryId(), companyId);
+                    entryToRemove, companyId);
         }
         jdbc.update("""
                 UPDATE invoice_due_dates
@@ -454,6 +465,36 @@ public class PaymentScheduleService {
             reflectionService.reflectUnpayCollection(dd.invoiceId(), dd.amount(), dueDateId, safeUserId());
         }
         return getOne(dueDateId);
+    }
+
+    /**
+     * COB-VOID-LINK — el asiento que de verdad hay que quitar al deshacer el
+     * cobro de un vencimiento. Si el enlazado está ANULADO (se reclasificó o se
+     * anuló a mano), NO se borra (es rastro): se busca su sustituto vivo con el
+     * mismo origen (la reclasificación conserva source_type/source_id). Si no
+     * hay sustituto, el cobro se anuló por DUPLICADO y el cobro real es otro
+     * asiento (manual, del banco...): deshacer aquí dejaría ese cobro en los
+     * libros con la factura pendiente, así que se rechaza.
+     */
+    private String resolveLiveEntry(String companyId, DueDate dd) {
+        if (dd.journalEntryId() == null) return null;
+        String status = jdbc.query("SELECT status FROM journal_entries WHERE id = ? AND company_id = ?",
+                rs -> rs.next() ? rs.getString("status") : null, dd.journalEntryId(), companyId);
+        if (status == null || !"VOIDED".equals(status)) return dd.journalEntryId();
+        List<String> live = jdbc.query("""
+                SELECT id FROM journal_entries
+                 WHERE company_id = ? AND source_type = 'DUE_DATE_PAYMENT' AND source_id = ?
+                   AND status <> 'VOIDED'
+                 ORDER BY entry_number DESC
+                """, (rs, n) -> rs.getString("id"), companyId, dd.id());
+        if (live.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El asiento de este " + ("SALES".equals(dd.invoiceKind()) ? "cobro" : "pago")
+                    + " se anuló (duplicado) y el movimiento real es otro asiento del Diario. "
+                    + "No se puede deshacer desde aquí: dejaría ese asiento en los libros con la "
+                    + "factura pendiente. Si hay que devolverlo, hazlo desde el Diario.");
+        }
+        return live.get(0);
     }
 
     // ====================================================================

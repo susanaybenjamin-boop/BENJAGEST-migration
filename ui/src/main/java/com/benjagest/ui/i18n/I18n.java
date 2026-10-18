@@ -6993,6 +6993,7 @@ public final class I18n {
             case "multi_alloc.col.pending" -> "Pending";
             case "multi_alloc.col.allocate" -> "Allocate";
             case "multi_alloc.empty" -> "Customer has no pending invoices.";
+            case "multi_alloc.no_pending" -> "There are no invoices pending collection: everything is already collected.";
             case "multi_alloc.btn.confirm" -> "Register payment";
             case "multi_alloc.load.fail" -> "Could not load pending invoices";
             case "multi_alloc.save.fail" -> "Payment registration failed";
@@ -8359,6 +8360,7 @@ public final class I18n {
             case "multi_alloc.col.pending" -> "Pendiente";
             case "multi_alloc.col.allocate" -> "Repartir";
             case "multi_alloc.empty" -> "El cliente no tiene facturas pendientes.";
+            case "multi_alloc.no_pending" -> "No hay facturas pendientes de cobro: está todo cobrado.";
             case "multi_alloc.btn.confirm" -> "Registrar pago";
             case "multi_alloc.load.fail" -> "No se pudieron cargar las facturas pendientes";
             case "multi_alloc.save.fail" -> "Falló el registro del pago";

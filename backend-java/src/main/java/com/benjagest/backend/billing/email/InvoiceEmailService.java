@@ -174,6 +174,13 @@ public class InvoiceEmailService {
     }
 
     private byte[] resolvePdf(SalesInvoice invoice) {
+        // COB-MAIL-H (2026-10-18): una HISTORICA solo se envia con SU PDF original
+        // (el importado o el de CONTENDO enlazado). Regenerarlo mandaria al
+        // cliente un documento que BENJAGEST nunca emitio (IMP-H).
+        if ("HISTORICAL".equals(invoice.invoiceType()) && !storageService.exists(invoice.pdfPath())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Esta factura historica no tiene su PDF original enlazado: no se puede enviar.");
+        }
         if (storageService.exists(invoice.pdfPath())) {
             try {
                 return storageService.read(invoice.pdfPath());

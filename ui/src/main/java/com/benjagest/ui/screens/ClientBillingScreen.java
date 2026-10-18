@@ -243,7 +243,8 @@ public class ClientBillingScreen extends ScreenBase {
             boolean cobrable = nv != null
                     && ("VALIDATED".equalsIgnoreCase(nv.status())
                         || "POSTED".equalsIgnoreCase(nv.status()));
-            dueDatesBtn.setDisable(!cobrable);
+            // COB-RECT: una rectificativa en negativo (o una anulada) no se cobra.
+            dueDatesBtn.setDisable(!cobrable || nv.collectionNotApplicable());
         });
         dueDatesBtn.setOnAction(ev -> {
             var sel = table.getSelectionModel().getSelectedItem();
