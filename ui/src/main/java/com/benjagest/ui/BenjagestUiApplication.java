@@ -9668,7 +9668,15 @@ public class BenjagestUiApplication extends Application
     private void refreshLockTimeout(int newTimeoutMin) {
         this.lockTimeoutMin = Math.max(0, newTimeoutMin);
         if (lockChecker != null) lockChecker.stop();
-        if (this.lockTimeoutMin <= 0) return;
+        if (this.lockTimeoutMin <= 0) {
+            // LOCK-BG: desarmar también un bloqueo en silencio pendiente (salir,
+            // o desactivar el bloqueo en Configuración mientras estaba detrás).
+            if (silentLockWatcher != null) {
+                endSilentLock();
+                lockShowing = false;
+            }
+            return;
+        }
         installLockInputTracker();
         lockChecker = new javafx.animation.Timeline(
                 new javafx.animation.KeyFrame(
@@ -9697,8 +9705,75 @@ public class BenjagestUiApplication extends Application
             // permite durante animación/layout → se difiere con runLater. Marcamos
             // lockShowing ya para no reentrar en el siguiente tick.
             lockShowing = true;
-            javafx.application.Platform.runLater(this::showLockStage);
+            javafx.application.Platform.runLater(this::lockNowOrSilently);
         }
+    }
+
+    // ------------------------------------------------------------
+    //  LOCK-BG (2026-10-23, Benjamin): "si estoy con otra aplicación y
+    //  benjagest está detrás, al llegar al tiempo de la inactividad, salta el
+    //  salvapantallas" — y puede estar en una segunda pantalla. El contador
+    //  solo ve el ratón/teclado DENTRO de BENJAGEST, así que trabajando en otro
+    //  programa se cumple igual y el bloqueo (always-on-top) tapaba ese otro
+    //  programa. Decisión de Benjamin: bloquear SIN saltar delante.
+    //  - BENJAGEST delante (alguna de sus ventanas con foco): como siempre.
+    //  - BENJAGEST detrás: bloqueo en silencio — no se abre ninguna ventana ni
+    //    se roba el foco; solo se oculta el contenido de la ventana principal
+    //    (para que no se vean datos en la otra pantalla). En cuanto el usuario
+    //    vuelve a cualquier ventana de BENJAGEST, sale la pantalla del PIN.
+    // ------------------------------------------------------------
+    private javafx.animation.Timeline silentLockWatcher = null;
+    private javafx.scene.paint.Paint silentLockPrevFill = null;
+
+    /** true si alguna ventana de BENJAGEST (principal o diálogo) tiene el foco. */
+    private static boolean anyAppWindowFocused() {
+        for (javafx.stage.Window w : javafx.stage.Window.getWindows()) {
+            if (w.isShowing() && w.isFocused()) return true;
+        }
+        return false;
+    }
+
+    private void lockNowOrSilently() {
+        if (anyAppWindowFocused()) {
+            showLockStage();
+            return;
+        }
+        // Bloqueo en silencio: ocultar el contenido y esperar a que vuelva.
+        if (root != null && root.getScene() != null) {
+            silentLockPrevFill = root.getScene().getFill();
+            root.getScene().setFill(javafx.scene.paint.Color.web("#0a0f1a"));
+            root.setVisible(false);
+        }
+        if (silentLockWatcher != null) silentLockWatcher.stop();
+        silentLockWatcher = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.millis(400), ev -> {
+                    if (!anyAppWindowFocused()) return;
+                    stopSilentLockWatcher();
+                    // Fuera del pulso de la animación: showAndWait no se permite dentro.
+                    // El contenido sigue oculto hasta que se valide el PIN.
+                    javafx.application.Platform.runLater(this::showLockStage);
+                }));
+        silentLockWatcher.setCycleCount(javafx.animation.Timeline.INDEFINITE);
+        silentLockWatcher.play();
+    }
+
+    private void stopSilentLockWatcher() {
+        if (silentLockWatcher != null) {
+            silentLockWatcher.stop();
+            silentLockWatcher = null;
+        }
+    }
+
+    /** Vuelve a mostrar el contenido ocultado por el bloqueo en silencio (si lo hubo). */
+    private void endSilentLock() {
+        stopSilentLockWatcher();
+        if (root != null && !root.isVisible()) {
+            root.setVisible(true);
+            if (root.getScene() != null && silentLockPrevFill != null) {
+                root.getScene().setFill(silentLockPrevFill);
+            }
+        }
+        silentLockPrevFill = null;
     }
 
     /** Muestra una Stage UNDECORATED modal pidiendo el PIN.
@@ -9740,6 +9815,7 @@ public class BenjagestUiApplication extends Application
                 if (Boolean.TRUE.equals(task.getValue())) {
                     lastInputAt = System.currentTimeMillis();
                     lockShowing = false;
+                    endSilentLock(); // LOCK-BG: vuelve a mostrar el contenido
                     stage.close();
                     // Si había una actualización detectada mientras estaba bloqueado,
                     // ahora (ya desbloqueado) sí se puede mostrar el diálogo.
