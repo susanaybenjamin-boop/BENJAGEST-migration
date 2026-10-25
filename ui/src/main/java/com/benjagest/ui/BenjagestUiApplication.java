@@ -9687,14 +9687,42 @@ public class BenjagestUiApplication extends Application
     }
 
     private boolean lockTrackerInstalled = false;
+    /**
+     * LOCK-ALLWIN (2026-10-25, Benjamin): antes solo escuchaba la Scene de la
+     * ventana PRINCIPAL. Lo que se hacía en cualquier otra ventana de
+     * BENJAGEST (el "Copiar texto del PDF", la importación de compras/gastos
+     * con su PDF, diálogos...) no contaba como actividad, y el salvapantallas
+     * saltaba "aunque estés moviendo el ratón". Ahora el filtro va en TODAS las
+     * ventanas de la app, también en las que se abran después.
+     */
     private void installLockInputTracker() {
         if (lockTrackerInstalled) return;
-        if (root == null || root.getScene() == null) return;
-        root.getScene().addEventFilter(javafx.scene.input.MouseEvent.ANY,
-                ev -> lastInputAt = System.currentTimeMillis());
-        root.getScene().addEventFilter(javafx.scene.input.KeyEvent.ANY,
-                ev -> lastInputAt = System.currentTimeMillis());
+        for (javafx.stage.Window w : javafx.stage.Window.getWindows()) {
+            trackLockInput(w);
+        }
+        javafx.stage.Window.getWindows().addListener(
+                (javafx.collections.ListChangeListener<javafx.stage.Window>) change -> {
+                    while (change.next()) {
+                        for (javafx.stage.Window w : change.getAddedSubList()) {
+                            trackLockInput(w);
+                        }
+                    }
+                });
         lockTrackerInstalled = true;
+    }
+
+    /** Ventanas que ya tienen el filtro (débil: no retiene las cerradas). */
+    private final java.util.Set<javafx.stage.Window> lockTrackedWindows =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    private void trackLockInput(javafx.stage.Window w) {
+        if (w == null || !lockTrackedWindows.add(w)) return;
+        w.addEventFilter(javafx.scene.input.MouseEvent.ANY,
+                ev -> lastInputAt = System.currentTimeMillis());
+        w.addEventFilter(javafx.scene.input.KeyEvent.ANY,
+                ev -> lastInputAt = System.currentTimeMillis());
+        w.addEventFilter(javafx.scene.input.ScrollEvent.ANY,
+                ev -> lastInputAt = System.currentTimeMillis());
     }
 
     private void checkLock() {
@@ -9733,7 +9761,30 @@ public class BenjagestUiApplication extends Application
         return false;
     }
 
+    /**
+     * LOCK-ALLWIN: al bloquear se ocultaban solo los datos de la ventana
+     * principal; una ventana secundaria abierta (p. ej. "Campos detectados" de
+     * la importación de un PDF) quedaba a la vista con los datos. Se hacen
+     * transparentes (no se cierran: un diálogo en showAndWait volvería y se
+     * perdería lo que se estaba rellenando) y se restauran al validar el PIN.
+     */
+    private final java.util.Map<javafx.stage.Window, Double> lockHiddenWindows = new java.util.HashMap<>();
+
+    private void hideSecondaryWindowsForLock() {
+        for (javafx.stage.Window w : new java.util.ArrayList<>(javafx.stage.Window.getWindows())) {
+            if (w == primaryStage || !w.isShowing() || lockHiddenWindows.containsKey(w)) continue;
+            lockHiddenWindows.put(w, w.getOpacity());
+            w.setOpacity(0);
+        }
+    }
+
+    private void restoreSecondaryWindowsAfterLock() {
+        lockHiddenWindows.forEach((w, opacity) -> w.setOpacity(opacity));
+        lockHiddenWindows.clear();
+    }
+
     private void lockNowOrSilently() {
+        hideSecondaryWindowsForLock();
         if (anyAppWindowFocused()) {
             showLockStage();
             return;
@@ -9767,6 +9818,7 @@ public class BenjagestUiApplication extends Application
     /** Vuelve a mostrar el contenido ocultado por el bloqueo en silencio (si lo hubo). */
     private void endSilentLock() {
         stopSilentLockWatcher();
+        restoreSecondaryWindowsAfterLock();
         if (root != null && !root.isVisible()) {
             root.setVisible(true);
             if (root.getScene() != null && silentLockPrevFill != null) {
