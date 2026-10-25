@@ -389,8 +389,7 @@ public final class I18n {
                 case "billing.config.field.footer" -> "Invoice footer";
                 case "billing.config.field.storage_root" -> "Invoice storage path";
                 case "billing.config.field.print_qr" -> "Print the VERI*FACTU QR code on invoices";
-                case "billing.config.print_qr.hint" -> "Until {date} you can issue invoices without the QR (not yet mandatory for you). From that date on the QR is always printed, even if you untick this box.";
-                case "billing.config.print_qr.hint.expired" -> "The QR code is mandatory since {date} (RD 1007/2023) and can no longer be switched off.";
+                case "billing.config.print_qr.hint" -> "The QR is only printed if this box is ticked. BENJAGEST does not switch it on by itself when VERI*FACTU becomes mandatory: complying from that date (RD 1007/2023) is up to you, with a certified invoicing program.";
                 case "billing.config.field.storage_root.prompt" -> "e.g. C:\\benjagest\\invoices or /var/benjagest/invoices (empty = backend default)";
                 case "billing.config.field.storage_root.browse" -> "Browse…";
                 case "billing.config.field.storage_root.dialog_title" -> "Select folder for invoice storage";
@@ -1628,8 +1627,7 @@ public final class I18n {
             case "billing.config.field.footer" -> "Pie de factura";
             case "billing.config.field.storage_root" -> "Ruta de almacenamiento de facturas";
             case "billing.config.field.print_qr" -> "Imprimir el código QR VERI*FACTU en las facturas";
-            case "billing.config.print_qr.hint" -> "Hasta el {date} puedes emitir facturas sin el QR (aún no estás obligado). Desde esa fecha el QR se imprimirá siempre, aunque desmarques esta casilla.";
-            case "billing.config.print_qr.hint.expired" -> "El código QR es obligatorio desde el {date} (RD 1007/2023) y ya no se puede desactivar.";
+            case "billing.config.print_qr.hint" -> "El QR solo se imprime si marcas esta casilla. BENJAGEST no lo activa por su cuenta cuando VERI*FACTU sea obligatorio: cumplir desde esa fecha (RD 1007/2023) depende de ti, con un programa de facturación certificado.";
             case "billing.config.field.storage_root.prompt" -> "ej. C:\\benjagest\\facturas o /var/benjagest/facturas (vacio = ruta por defecto del servidor)";
             case "billing.config.field.storage_root.browse" -> "Examinar…";
             case "billing.config.field.storage_root.dialog_title" -> "Selecciona carpeta para almacenar facturas";
