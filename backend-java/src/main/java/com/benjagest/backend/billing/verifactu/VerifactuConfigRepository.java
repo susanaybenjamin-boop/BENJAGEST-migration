@@ -75,7 +75,8 @@ public class VerifactuConfigRepository {
                 rs.getString("invoice_footer_template"),
                 rs.getString("invoice_storage_root"),
                 rs.getBoolean("print_qr"),
-                VerifactuDates.qrOptOutDeadline(rs.getString("tax_identifier")).toString()
+                // VF-QR-NODATE: el interruptor del QR ya no caduca -> sin fecha.
+                null
         );
     }
 

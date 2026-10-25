@@ -57,14 +57,18 @@ public class InvoiceQrService {
 
     /**
      * VF-QR-TOGGLE: true si la empresa ha APAGADO el QR en su config
-     * ({@code printQr=false}) y ademas aun esta dentro del plazo legal
-     * (antes de su fecha de obligacion VERI*FACTU, deducida del NIF).
-     * Desde esa fecha el toggle caduca y esto devuelve siempre false.
+     * ({@code printQr=false}).
+     *
+     * <p>VF-QR-NODATE (2026-10-25, decision de Benjamin): el toggle ya NO
+     * caduca en la fecha de obligacion VERI*FACTU. BENJAGEST no se usara como
+     * programa oficial cuando VeriFactu sea obligatorio (se contratara uno
+     * certificado), y la fecha legal esta en el aire (anuncio de octubre de
+     * 2028 sin BOE). La obligacion legal sigue siendo del usuario: la app ya
+     * no fuerza el QR por su cuenta. {@code company} se conserva en la firma
+     * por compatibilidad con los tres llamantes.
      */
     public boolean qrSuppressed(VerifactuConfig config, CompanyDataResponse company) {
-        if (config == null || config.printQr() == null || config.printQr()) return false;
-        String taxId = company == null ? null : company.taxIdentifier();
-        return com.benjagest.backend.billing.verifactu.VerifactuDates.qrOptOutStillAllowed(taxId);
+        return config != null && config.printQr() != null && !config.printQr();
     }
 
     public byte[] generatePng(SalesInvoice invoice, CompanyDataResponse company, VerifactuConfig config) {

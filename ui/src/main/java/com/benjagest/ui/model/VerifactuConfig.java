@@ -16,7 +16,7 @@ public record VerifactuConfig(
         String invoiceStorageRoot,
         /** VF-QR-TOGGLE: imprimir el QR AEAT en los PDF (false = apagado). */
         boolean printQr,
-        /** Fecha ISO hasta la que se permite emitir sin QR (computa el backend). */
+        /** Siempre null desde VF-QR-NODATE (2026-10-25): el interruptor ya no caduca. */
         String qrOptOutUntil
 ) {
 }

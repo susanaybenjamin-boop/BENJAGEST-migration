@@ -151,28 +151,13 @@ public class BillingConfigScreen extends ScreenBase {
                 t("billing.config.field.storage_root.prompt"));
         verifactuStorageRootField.setPrefColumnCount(50);
 
-        // VF-QR-TOGGLE: imprimir (o no) el QR AEAT en los PDF. Solo se puede
-        // apagar mientras la empresa no este obligada (fecha que computa el
-        // backend a partir del NIF); desde esa fecha el toggle caduca y se
-        // fuerza encendido.
+        // VF-QR-TOGGLE: imprimir (o no) el QR AEAT en los PDF.
+        // VF-QR-NODATE (2026-10-25, decisión de Benjamin): el interruptor ya
+        // no caduca en la fecha de obligación VERI*FACTU; el QR sale solo si
+        // está marcado. La obligación legal es del usuario (ver la pista).
         printQrCheck = new CheckBox(t("billing.config.field.print_qr"));
-        boolean qrOptOutExpired = false;
-        String deadlineIso = config.qrOptOutUntil();
-        if (deadlineIso != null && !deadlineIso.isBlank()) {
-            try {
-                qrOptOutExpired = !java.time.LocalDate.now()
-                        .isBefore(java.time.LocalDate.parse(deadlineIso));
-            } catch (java.time.format.DateTimeParseException ignored) {
-                // fecha ilegible -> tratamos como no caducado (el backend manda)
-            }
-        }
-        printQrCheck.setSelected(qrOptOutExpired || config.printQr());
-        printQrCheck.setDisable(qrOptOutExpired);
-        String deadlineHuman = deadlineIso == null || deadlineIso.isBlank()
-                ? "" : formatIsoDate(deadlineIso);
-        Label printQrHint = new Label(qrOptOutExpired
-                ? t("billing.config.print_qr.hint.expired").replace("{date}", deadlineHuman)
-                : t("billing.config.print_qr.hint").replace("{date}", deadlineHuman));
+        printQrCheck.setSelected(config.printQr());
+        Label printQrHint = new Label(t("billing.config.print_qr.hint"));
         printQrHint.setWrapText(true);
         printQrHint.getStyleClass().add("settings-hint");
         VBox printQrBox = new VBox(2, printQrCheck, printQrHint);
@@ -1007,16 +992,6 @@ public class BillingConfigScreen extends ScreenBase {
         task.setOnFailed(event -> showError(t("billing.texts.save.fail.title"),
                 t("billing.texts.save.fail.body")));
         start(task, "billing-texts-save");
-    }
-
-    /** dd/MM/yyyy legible a partir de una fecha ISO; si no parsea, tal cual. */
-    private String formatIsoDate(String iso) {
-        try {
-            return java.time.LocalDate.parse(iso)
-                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        } catch (java.time.format.DateTimeParseException e) {
-            return iso;
-        }
     }
 
     private void saveVerifactuConfig() {
