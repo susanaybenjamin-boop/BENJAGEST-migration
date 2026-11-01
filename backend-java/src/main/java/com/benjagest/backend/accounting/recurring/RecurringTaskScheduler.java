@@ -7,6 +7,8 @@ import java.time.LocalDate;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -76,8 +78,38 @@ public class RecurringTaskScheduler {
         runForDate(LocalDate.now());
     }
 
-    /** Ejecuta las tareas due para una fecha. Devuelve resumen ok/error/skipped. */
-    public RunSummary runForDate(LocalDate date) {
+    /**
+     * REC-STARTUP — pasada de recuperación al arrancar el backend.
+     *
+     * <p>El cron solo dispara a las 06:10. En el PC de Benjamin el backend
+     * es un servicio que vive mientras el equipo está encendido: si se
+     * enciende después de esa hora, las tareas del día no corrían hasta
+     * la mañana siguiente con el PC encendido a las 06:10 (caso real
+     * 2026-11-01: arranque a las 11:03, dos gastos del día 1 sin ejecutar).
+     *
+     * <p>No duplica: cada ejecución mueve {@code next_run_date} al siguiente
+     * periodo, así que una tarea ya hecha hoy deja de estar due.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void runOnStartup() {
+        try {
+            RunSummary s = runForDate(LocalDate.now());
+            log.info("[recurring] pasada de arranque: {} pendientes -> {} OK, {} ERROR, {} SKIPPED",
+                    s.total(), s.ok(), s.errors(), s.skipped());
+        } catch (RuntimeException ex) {
+            // Nunca tumbar el arranque: el cron de las 06:10 lo reintentará.
+            log.warn("[recurring] pasada de arranque fallida: {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * Ejecuta las tareas due para una fecha. Devuelve resumen ok/error/skipped.
+     *
+     * <p>{@code synchronized}: la pasada de arranque, el cron y el endpoint
+     * {@code /run-all} pueden coincidir; en serie, la segunda ya no ve como
+     * due lo que la primera ejecutó.
+     */
+    public synchronized RunSummary runForDate(LocalDate date) {
         List<RecurringTaskService.DueTask> due = service.findDueGlobally(date);
         int ok = 0, err = 0, skipped = 0;
         for (RecurringTaskService.DueTask t : due) {
