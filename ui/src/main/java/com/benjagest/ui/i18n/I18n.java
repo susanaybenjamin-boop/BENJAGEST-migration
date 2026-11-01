@@ -491,7 +491,7 @@ public final class I18n {
                 case "timeclock.not_enrolled.title" -> "You have no employee profile in this company";
                 case "timeclock.not_enrolled.body" -> "Ask the administrator to add you in Personal > Employees, linking your user. Once they do, refresh this screen and you will be able to punch in.";
                 case "purchases.header" -> "Purchases";
-                case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI, just regex on the embedded text). Scanned PDFs require OCR — coming in a follow-up slice.";
+                case "purchases.hint" -> "Upload a received invoice as PDF — BENJAGEST extracts the issuer NIF, date, base, VAT and total automatically (no AI). Scanned PDFs are read automatically with OCR.";
                 case "purchases.action.import_pdf" -> "Import PDF invoice";
                 case "purchases.action.import_multi" -> "Import multiple PDFs";
                 case "purchases.action.import_pdfs" -> "Import PDFs";
@@ -1729,7 +1729,7 @@ public final class I18n {
             case "timeclock.not_enrolled.title" -> "No tienes ficha de empleado en esta empresa";
             case "timeclock.not_enrolled.body" -> "Pide al administrador que te de de alta en Personal > Empleados vinculando tu usuario. Cuando lo haga, refresca esta pantalla y podras fichar.";
             case "purchases.header" -> "Compras";
-            case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA, solo regex sobre el texto embebido). PDFs escaneados necesitan OCR — llega en un slice posterior.";
+            case "purchases.hint" -> "Sube una factura recibida en PDF — BENJAGEST extrae el NIF emisor, fecha, base, IVA y total automaticamente (sin IA). Los PDFs escaneados se leen automaticamente con OCR.";
             case "purchases.action.import_pdf" -> "Importar factura PDF";
             case "purchases.action.import_multi" -> "Importar varios PDFs";
             case "purchases.action.import_pdfs" -> "Importar PDFs";
