@@ -99,6 +99,9 @@ public class BackupService {
             if (Files.isDirectory(facturasDir)) {
                 addDirectoryToZip(facturasDir, "facturas/", zos);
             }
+            // 3) Carpetas invoice_storage_root personalizadas de cada empresa
+            //    (pueden estar fuera de facturasDir, p.ej. Google Drive o NAS)
+            addCustomInvoiceRoots(zos);
         }
         rotate();
         log.info("BACKUP-LOCAL: backup completado {}", zip);
@@ -283,6 +286,38 @@ public class BackupService {
         String s = v.toString();
         return "'" + s.replace("\\", "\\\\").replace("'", "''")
                 .replace("\n", "\\n").replace("\r", "\\r") + "'";
+    }
+
+    /**
+     * Para cada empresa con un invoice_storage_root propio (distinto de
+     * facturasDir), añade sus PDFs al zip bajo
+     * "facturas-custom/{companyId}/…". Así los backups capturan facturas
+     * almacenadas en Google Drive, NAS u otras rutas externas.
+     */
+    private void addCustomInvoiceRoots(ZipOutputStream zos) {
+        try (var conn = dataSource.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT id, invoice_storage_root FROM companies" +
+                     " WHERE invoice_storage_root IS NOT NULL AND invoice_storage_root <> ''")) {
+            while (rs.next()) {
+                String companyId = rs.getString(1);
+                String customRootStr = rs.getString(2);
+                Path customRoot = Paths.get(customRootStr).normalize();
+                Path normalFacuras = facturasDir.normalize();
+                // Si la ruta ya está dentro de facturasDir la cubrimos en el paso 2
+                if (customRoot.startsWith(normalFacuras)) continue;
+                if (!Files.isDirectory(customRoot)) {
+                    log.warn("BACKUP-LOCAL: invoice_storage_root no encontrado para empresa {}: {}", companyId, customRoot);
+                    continue;
+                }
+                String prefix = "facturas-custom/" + companyId + "/";
+                log.info("BACKUP-LOCAL: añadiendo carpeta personalizada de empresa {} → {}", companyId, customRoot);
+                addDirectoryToZip(customRoot, prefix, zos);
+            }
+        } catch (Exception ex) {
+            log.warn("BACKUP-LOCAL: no se pudieron incluir carpetas personalizadas de facturas", ex);
+        }
     }
 
     private void addDirectoryToZip(Path root, String prefix, ZipOutputStream zos) throws IOException {
