@@ -22,6 +22,8 @@ import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -69,6 +71,36 @@ public class BackupService {
         catch (Exception ex) {
             log.warn("BACKUP-LOCAL: fallo en backup semanal", ex);
         }
+    }
+
+    /**
+     * Al arrancar el backend: si el último backup tiene más de 7 días (o no
+     * existe), lanza uno en segundo plano para no bloquear el arranque.
+     * Cubre el caso habitual: el PC estaba apagado el lunes a las 3:00.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void runOnStartupIfStale() {
+        Thread.ofVirtual().name("backup-startup").start(() -> {
+            try {
+                List<BackupInfo> existing = list();
+                if (!existing.isEmpty()) {
+                    // El último backup es el primero de la lista (más reciente)
+                    String lastModified = existing.get(0).lastModified();
+                    if (lastModified != null) {
+                        java.time.Instant last = java.time.Instant.parse(lastModified);
+                        long daysSince = java.time.Duration.between(last, java.time.Instant.now()).toDays();
+                        if (daysSince < 7) {
+                            log.info("BACKUP-LOCAL: backup reciente ({} días), no se lanza al arrancar", daysSince);
+                            return;
+                        }
+                    }
+                }
+                log.info("BACKUP-LOCAL: backup vencido o inexistente, lanzando al arrancar...");
+                run();
+            } catch (Exception ex) {
+                log.warn("BACKUP-LOCAL: fallo en backup de arranque", ex);
+            }
+        });
     }
 
     /** Disparable manualmente desde UI. Devuelve la ruta del zip generado. */
