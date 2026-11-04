@@ -7558,6 +7558,12 @@ public class BenjagestUiApplication extends Application
             if (onLoaded != null) onLoaded.run();
             return;
         }
+        // Mi gestión: la asesoría actúa sobre su propia empresa → nunca necesita acuerdo TPB consigo misma.
+        if (acting.equals(AuthSession.get().activeCompanyId())) {
+            billingGateCompanyId = null;
+            if (onLoaded != null) onLoaded.run();
+            return;
+        }
         Task<com.benjagest.ui.model.TpbAgreementEntry> task = new Task<>() {
             @Override protected com.benjagest.ui.model.TpbAgreementEntry call() throws Exception {
                 return altaApiClient.tpbFindCurrent(acting);
