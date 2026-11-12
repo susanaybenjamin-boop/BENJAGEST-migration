@@ -189,8 +189,6 @@ public class CertificateApiClient {
     }
 
     private static String escape(String v) {
-        if (v == null) return "";
-        return v.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r");
+        return com.benjagest.ui.support.Json.escape(v);
     }
 }

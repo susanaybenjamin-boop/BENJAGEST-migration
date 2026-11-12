@@ -74,11 +74,7 @@ public class CustomerApiClient {
     }
 
     private String escape(String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        return com.benjagest.ui.support.Json.escape(value);
     }
 
     private List<CustomerSummary> parseCustomers(String json) {

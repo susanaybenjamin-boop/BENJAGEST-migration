@@ -1902,7 +1902,6 @@ public class AccountingApiClient {
     }
 
     private static String escape(String v) {
-        return v == null ? "" : v.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r");
+        return com.benjagest.ui.support.Json.escape(v);
     }
 }

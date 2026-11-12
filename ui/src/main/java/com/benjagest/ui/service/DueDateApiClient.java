@@ -170,7 +170,6 @@ public class DueDateApiClient {
     }
 
     private static String jsonStr(String v) {
-        if (v == null) return "null";
-        return "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return com.benjagest.ui.support.Json.quote(v);
     }
 }

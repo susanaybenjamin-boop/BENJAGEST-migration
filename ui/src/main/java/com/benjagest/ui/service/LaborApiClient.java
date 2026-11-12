@@ -2209,7 +2209,7 @@ public class LaborApiClient {
     }
 
     private String escape(String v) {
-        return v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+        return com.benjagest.ui.support.Json.escape(v);
     }
 
     private String textField(String json, String f) {

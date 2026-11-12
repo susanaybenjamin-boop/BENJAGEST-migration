@@ -184,11 +184,7 @@ public class WorkspaceApiClient {
     }
 
     private String escape(String value) {
-        return (value == null ? "" : value)
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        return com.benjagest.ui.support.Json.escape(value);
     }
 
     private String unescape(String value) {
