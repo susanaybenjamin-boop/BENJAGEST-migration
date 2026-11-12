@@ -8106,6 +8106,7 @@ public class BenjagestUiApplication extends Application
 
     private void toggleLanguage() {
         language = language == Language.ES ? Language.EN : Language.ES;
+        com.benjagest.ui.i18n.I18n.setCurrent(language);
         showShell();
         if ("dashboard".equals(currentModule)) {
             showDashboard();
@@ -9635,6 +9636,7 @@ public class BenjagestUiApplication extends Application
                         } else if ("es".equalsIgnoreCase(lang) && language != Language.ES) {
                             language = Language.ES;
                         }
+                        com.benjagest.ui.i18n.I18n.setCurrent(language);
                     }
                     @Override public void refreshLockTimeout(int min) { BenjagestUiApplication.this.refreshLockTimeout(min); }
                 });

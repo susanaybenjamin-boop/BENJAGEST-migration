@@ -148,6 +148,6 @@ public final class DeviceConfig {
     }
 
     private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        return com.benjagest.ui.support.Json.escape(s);
     }
 }

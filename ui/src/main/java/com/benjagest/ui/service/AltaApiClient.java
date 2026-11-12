@@ -791,8 +791,7 @@ public class AltaApiClient {
     // ----- helpers JSON minimalistas para Slice 5C -----
 
     private static String jsonString(String raw) {
-        if (raw == null) return "null";
-        return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return com.benjagest.ui.support.Json.quote(raw);
     }
 
     private static String jsonArrayOfStrings(List<String> items) {
@@ -1138,10 +1137,7 @@ public class AltaApiClient {
     }
 
     private String escape(String value) {
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "");
+        return com.benjagest.ui.support.Json.escape(value);
     }
 
     // ---- AEAT-ED-1: modelo 347 (operaciones con terceros) ----

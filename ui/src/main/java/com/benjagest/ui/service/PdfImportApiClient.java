@@ -80,7 +80,7 @@ public class PdfImportApiClient {
     }
 
     private static String escape(String v) {
-        return v == null ? "" : v.replace("\\", "\\\\").replace("\"", "\\\"");
+        return com.benjagest.ui.support.Json.escape(v);
     }
 
     private byte[] buildMultipartBody(File file, String boundary) throws IOException {

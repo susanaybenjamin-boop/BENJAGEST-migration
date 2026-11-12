@@ -173,7 +173,7 @@ public class ConsolidationApiClient {
         return m.find() ? Long.parseLong(m.group(1)) : 0L;
     }
     private static String escape(String s) {
-        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
+        return com.benjagest.ui.support.Json.escape(s);
     }
     private static String apiBaseUrl() {
         return System.getenv().getOrDefault("BENJAGEST_API_BASE_URL", DEFAULT_API_BASE_URL);
