@@ -15,6 +15,24 @@ public final class I18n {
 
     private I18n() {}
 
+    // TRB-ERR — idioma activo de la UI, para las clases que traducen sin tener
+    // la instancia de la aplicacion (p. ej. BackendErrors). Lo fija
+    // BenjagestUiApplication cada vez que cambia el idioma.
+    private static volatile Language current = Language.ES;
+
+    public static void setCurrent(Language lang) {
+        if (lang != null) current = lang;
+    }
+
+    public static Language current() {
+        return current;
+    }
+
+    /** Traduce con el idioma activo de la UI. */
+    public static String t(String key) {
+        return t(current, key);
+    }
+
     public static String t(Language lang, String key) {
         if (lang == Language.EN) {
             return switch (key) {
@@ -1288,6 +1306,7 @@ public final class I18n {
                     if (v == null) v = tTcCalEn(key);
                     if (v == null) v = tSessionEn(key);
                     if (v == null) v = tConceptsEn(key);
+                    if (v == null) v = tErrorsEn(key);
                     yield v != null ? v : (key.startsWith("column.") ? key.substring(7) : key);
                 }
             };
@@ -2526,6 +2545,7 @@ public final class I18n {
                 if (v == null) v = tTcCalEs(key);
                 if (v == null) v = tSessionEs(key);
                 if (v == null) v = tConceptsEs(key);
+                if (v == null) v = tErrorsEs(key);
                 if (v != null) yield v;
                 yield key.startsWith("column.") ? key.substring(7) : switch (key) {
                 case "field.name" -> "Nombre";
@@ -9450,6 +9470,45 @@ public final class I18n {
             case "purchases.paid.yes" -> "Pagado";
             case "accounting.fin.see_invoices" -> "Pulsa para verlas";
             case "accounting.fin.unpaid_bills" -> "{n} sin pagar · pulsa aquí";
+            default -> null;
+        };
+    }
+
+    // ============ TRB-ERR — mensajes de error en lenguaje humano ============
+    // Los usa BackendErrors para no ensenar jerga tecnica al usuario.
+
+    static String tErrorsEn(String key) {
+        return switch (key) {
+            case "error.friendly.json_parse" -> "Some of the text you typed could not be sent (a line break or a special character got in the way). Rewrite that field in a single line, or retype the text, and save again.";
+            case "error.friendly.too_long" -> "The text you typed is too long for that field. Make it shorter and save again.";
+            case "error.friendly.conflict" -> "There is already a record with that data, or something else is using it. Review the data and try again.";
+            case "error.friendly.offline" -> "BENJAGEST could not reach its server. Check that the application is fully started and try again in a few seconds.";
+            case "error.friendly.timeout" -> "The server took too long to answer. Try again in a few seconds.";
+            case "error.friendly.session" -> "Your session has expired. Sign in again to continue.";
+            case "error.friendly.forbidden" -> "You are not allowed to do this. Ask the owner of the account for permission.";
+            case "error.friendly.not_found" -> "That record is not there any more; somebody may have deleted it. Refresh the screen.";
+            case "error.friendly.bad_request" -> "Some of the data is not valid. Review the fields and try again.";
+            case "error.friendly.server" -> "The server failed while handling this. Nothing was saved. Try again, and if it keeps happening tell us what you were doing.";
+            case "error.friendly.unknown" -> "This could not be completed. Nothing was saved. Try again, and if it keeps happening tell us what you were doing.";
+            case "error.friendly.detail" -> "Technical detail: {detail}";
+            default -> null;
+        };
+    }
+
+    static String tErrorsEs(String key) {
+        return switch (key) {
+            case "error.friendly.json_parse" -> "Parte del texto que has escrito no se pudo enviar (se coló un salto de línea o un carácter especial). Vuelve a escribir ese campo en una sola línea y guarda otra vez.";
+            case "error.friendly.too_long" -> "El texto que has escrito es demasiado largo para ese campo. Acórtalo y vuelve a guardar.";
+            case "error.friendly.conflict" -> "Ya existe un registro con esos datos, o hay algo que lo está usando. Revisa los datos e inténtalo de nuevo.";
+            case "error.friendly.offline" -> "BENJAGEST no ha podido contactar con su servidor. Comprueba que la aplicación ha arrancado del todo y prueba otra vez en unos segundos.";
+            case "error.friendly.timeout" -> "El servidor ha tardado demasiado en responder. Inténtalo otra vez en unos segundos.";
+            case "error.friendly.session" -> "Tu sesión ha caducado. Vuelve a entrar para continuar.";
+            case "error.friendly.forbidden" -> "No tienes permiso para hacer esto. Pídeselo al titular de la cuenta.";
+            case "error.friendly.not_found" -> "Ese registro ya no está; puede que alguien lo haya borrado. Refresca la pantalla.";
+            case "error.friendly.bad_request" -> "Alguno de los datos no es válido. Revisa los campos e inténtalo de nuevo.";
+            case "error.friendly.server" -> "El servidor ha fallado al procesar esto. No se ha guardado nada. Vuelve a intentarlo y, si sigue pasando, cuéntanos qué estabas haciendo.";
+            case "error.friendly.unknown" -> "No se ha podido completar la operación. No se ha guardado nada. Vuelve a intentarlo y, si sigue pasando, cuéntanos qué estabas haciendo.";
+            case "error.friendly.detail" -> "Detalle técnico: {detail}";
             default -> null;
         };
     }
