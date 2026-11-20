@@ -3116,6 +3116,151 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  BOE-FILTRO — preferencias de avisos del BOE
+    // ============================================================
+
+    /** Preferencias de la empresa activa + catalogos para la pantalla. */
+    public com.benjagest.ui.model.BoeAlertPrefsView getBoeAlertPrefs()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/boe-alerts/prefs").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        // sectionCatalog son objetos ANIDADOS dentro de la respuesta, asi que
+        // se recorta su array y se trocea con splitTopLevelObjects (CLAUDE.md
+        // §6): el regex plano devolveria [] en silencio.
+        List<com.benjagest.ui.model.BoeAlertPrefsView.BoeSection> cat = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(arrayField(j, "sectionCatalog"))) {
+            cat.add(new com.benjagest.ui.model.BoeAlertPrefsView.BoeSection(
+                    textField(obj, "code"), textField(obj, "name")));
+        }
+        return new com.benjagest.ui.model.BoeAlertPrefsView(
+                boolFieldOrTrue(j, "enabled"),
+                stringArrayField(j, "sections"),
+                stringArrayField(j, "departments"),
+                stringArrayField(j, "keywords"),
+                cat,
+                stringArrayField(j, "knownDepartments"),
+                stringArrayField(j, "defaultKeywords"));
+    }
+
+    public com.benjagest.ui.model.BoeAlertPrefsView saveBoeAlertPrefs(
+            boolean enabled, List<String> sections,
+            List<String> departments, List<String> keywords)
+            throws IOException, InterruptedException {
+        String body = "{\"enabled\":" + enabled
+                + ",\"sections\":" + jsonStringArray(sections)
+                + ",\"departments\":" + jsonStringArray(departments)
+                + ",\"keywords\":" + jsonStringArray(keywords) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/boe-alerts/prefs")
+                .header("Content-Type", "application/json")
+                .PUT(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        body, java.nio.charset.StandardCharsets.UTF_8)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        return getBoeAlertPrefs();
+    }
+
+    /** Prueba en seco contra un dia real del BOE. No guarda ni notifica. */
+    public com.benjagest.ui.model.BoePreviewResult previewBoeAlerts(
+            String dateIso, boolean enabled, List<String> sections,
+            List<String> departments, List<String> keywords)
+            throws IOException, InterruptedException {
+        String body = "{\"date\":" + jsonString(dateIso)
+                + ",\"enabled\":" + enabled
+                + ",\"sections\":" + jsonStringArray(sections)
+                + ",\"departments\":" + jsonStringArray(departments)
+                + ",\"keywords\":" + jsonStringArray(keywords) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/boe-alerts/preview")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        body, java.nio.charset.StandardCharsets.UTF_8)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        List<com.benjagest.ui.model.BoePreviewResult.Item> items = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(arrayField(j, "items"))) {
+            items.add(new com.benjagest.ui.model.BoePreviewResult.Item(
+                    textField(obj, "boeId"),
+                    textField(obj, "title"),
+                    textField(obj, "url"),
+                    textField(obj, "department"),
+                    textField(obj, "section"),
+                    textField(obj, "keywordsMatched")));
+        }
+        return new com.benjagest.ui.model.BoePreviewResult(
+                textField(j, "date"),
+                intFieldOrZero(j, "totalArticles"),
+                intFieldOrZero(j, "matched"),
+                items,
+                textField(j, "error"));
+    }
+
+    /**
+     * Recorta el texto de un array con nombre ({@code "campo":[ ... ]}),
+     * balanceando corchetes para no cortar en el primer {@code ]} que aparezca
+     * dentro de una cadena o de un sub-array.
+     */
+    private String arrayField(String json, String field) {
+        if (json == null) return "";
+        int k = json.indexOf("\"" + field + "\"");
+        if (k < 0) return "";
+        int open = json.indexOf('[', k);
+        if (open < 0) return "";
+        int depth = 0;
+        boolean inStr = false;
+        boolean esc = false;
+        for (int i = open; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (esc) { esc = false; continue; }
+            if (inStr) {
+                if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            if (c == '"') inStr = true;
+            else if (c == '[') depth++;
+            else if (c == ']') {
+                depth--;
+                if (depth == 0) return json.substring(open, i + 1);
+            }
+        }
+        return "";
+    }
+
+    /** Array de cadenas sueltas: {@code "campo":["a","b"]}. */
+    private List<String> stringArrayField(String json, String field) {
+        List<String> out = new ArrayList<>();
+        String arr = arrayField(json, field);
+        if (arr.isEmpty()) return out;
+        java.util.regex.Matcher m =
+                java.util.regex.Pattern.compile("\"((?:\\\\.|[^\"])*)\"").matcher(arr);
+        // Mismo desescapado que textField (esta clase no tiene helper propio).
+        while (m.find()) out.add(m.group(1).replace("\\\"", "\"")
+                .replace("\\n", "\n").replace("\\\\", "\\"));
+        return out;
+    }
+
+    private String jsonStringArray(List<String> values) {
+        if (values == null) return "[]";
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) b.append(',');
+            b.append(jsonString(values.get(i)));
+        }
+        return b.append(']').toString();
+    }
+
+    private boolean boolFieldOrTrue(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + field + "\"\\s*:\\s*(true|false)").matcher(json);
+        return !m.find() || "true".equals(m.group(1));
+    }
+
+    // ============================================================
     //  PORT-4 LOGO — Logo de empresa /api/settings/company/logo
     // ============================================================
 

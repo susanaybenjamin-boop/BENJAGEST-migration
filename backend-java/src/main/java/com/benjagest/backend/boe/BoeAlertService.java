@@ -2,6 +2,12 @@ package com.benjagest.backend.boe;
 
 import com.benjagest.backend.advisory.notifications.AdvisoryNotificationService;
 import com.benjagest.backend.auth.RequiresRole;
+import com.benjagest.backend.boe.BoeMatcher.BoeItem;
+import com.benjagest.backend.config.WindowsAwareTrust;
+import com.benjagest.backend.boe.BoeMatcher.Match;
+import com.benjagest.backend.tenant.TenantContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -10,10 +16,10 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,180 +27,306 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * BOE-RSS — alertas diarias del Boletín Oficial del Estado sobre
- * temas fiscales y laborales.
+ * BOE-RSS — alertas diarias del Boletín Oficial del Estado sobre temas
+ * fiscales y laborales.
  *
  * <p>Cron diario 06:00. Llama a la API de datos abiertos del BOE
- * (https://www.boe.es/datosabiertos/api/boe/sumario/{YYYYMMDD}) y
- * filtra los artículos cuyo título contenga alguna keyword fiscal o
- * laboral. Por cada hit nuevo:
- * <ul>
- *   <li>Inserta fila en {@code boe_alerts} (UK por {@code boe_id}
- *       previene duplicados si el job se relanza).</li>
- *   <li>Notifica a cada asesoría activa via
- *       {@link AdvisoryNotificationService#emit}.</li>
- * </ul>
+ * ({@code https://www.boe.es/datosabiertos/api/boe/sumario/{YYYYMMDD}}),
+ * recorre los artículos del sumario y, <b>para cada asesoría</b>, se queda con
+ * los que encajan con SUS preferencias ({@link BoeAlertPrefs}). Cada acierto
+ * nuevo se guarda en {@code boe_alerts} (UK por {@code boe_id}, así que el
+ * catálogo no se duplica aunque el job se relance) y se notifica solo a las
+ * empresas a las que les encaja.
  *
- * <p>Defensivo: si BOE no responde o el formato cambia, captura la
- * excepción y deja log. No bloquea otros schedulers ni el arranque.
+ * <p><b>BOE-FILTRO (2026-11-20)</b> — Benjamin: <i>"el filtro es light, y se
+ * llena de noticias que no interesan, tendríamos que poder escoger qué queremos
+ * que nos llegue"</i>. Lo que cambia respecto a la versión anterior:
+ * <ol>
+ *   <li><b>El filtro deja de ser una constante del código</b> y pasa a ser
+ *       configurable por empresa, con pantalla propia.</li>
+ *   <li><b>Se filtra por SECCIÓN y DEPARTAMENTO</b>, no solo por palabra. El
+ *       departamento ya se guardaba desde la V103 sin usarse y la sección ni se
+ *       leía; son las dos palancas que más ruido quitan.</li>
+ *   <li><b>Las palabras se comparan COMPLETAS</b> ({@link BoeMatcher}) en vez de
+ *       con {@code contains()}.</li>
+ *   <li><b>El JSON se parsea con Jackson</b>. El parser anterior recorría el
+ *       cuerpo con cuatro {@code Matcher.find()} INDEPENDIENTES (id, título,
+ *       url, departamento); en cuanto un bloque no traía alguno de los cuatro,
+ *       los punteros se desincronizaban y los títulos se emparejaban con el
+ *       enlace de otro artículo. Con el sumario real se comprobó que fallaba ya
+ *       en el primero: el propio sumario del día tiene su {@code url_pdf} antes
+ *       que cualquier artículo, así que el primer aviso se llevaba el PDF del
+ *       boletín entero. El comentario que justificaba evitar Jackson
+ *       ("para no añadir dependencia donde no la había") estaba obsoleto: el
+ *       backend ya lo usa en media docena de servicios.</li>
+ * </ol>
+ *
+ * <p>Defensivo: si el BOE no responde o cambia el formato, captura la excepción
+ * y deja log. No bloquea otros schedulers ni el arranque.
  */
 @Service
 public class BoeAlertService {
 
     private static final Logger log = LoggerFactory.getLogger(BoeAlertService.class);
     private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private static final List<String> KEYWORDS = List.of(
-            "AEAT", "IVA", "IRPF", "Impuesto Sociedades", "RD ", "Real Decreto",
-            "factura electrónica", "Verifactu", "SIF", "SEPE", "Seguridad Social",
-            "salario", "salarial", "nómina", "fichaje", "registro horario",
-            "contrato de trabajo", "Estatuto de los Trabajadores",
-            "RD 1619/2012", "RD 1007/2023", "Orden HAC",
-            "BOE-A-2026", "BOE-A-2027");
 
-    private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
-    private static final Pattern ID_RE = Pattern.compile("\"identificador\"\\s*:\\s*\"(BOE-A-[^\"]+)\"");
-    private static final Pattern TITLE_RE = Pattern.compile("\"titulo\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern URL_RE = Pattern.compile("\"url_pdf\"\\s*:\\s*\\{[^}]*\"texto\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern DEPT_RE = Pattern.compile("\"departamento\"\\s*:\\s*\\{[^}]*\"nombre\"\\s*:\\s*\"([^\"]+)\"");
+    /**
+     * BOE-TLS — el cliente confia en el almacen de Java Y en el de Windows.
+     * Desde el 18-oct-2026 www.boe.es presenta una cadena de la FNMT-RCM, cuya
+     * raiz NO viene en el cacerts de Java: sin esto el barrido diario muere con
+     * PKIX y, como la excepcion se captura, falla en silencio (en produccion
+     * llevaba mas de un mes asi). Ver {@link WindowsAwareTrust}.
+     */
+    private static final HttpClient HTTP = buildHttpClient();
+
+    private static HttpClient buildHttpClient() {
+        HttpClient.Builder b = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10));
+        javax.net.ssl.SSLContext ctx = WindowsAwareTrust.sslContextOrNull();
+        if (ctx != null) b.sslContext(ctx);
+        return b.build();
+    }
 
     private final JdbcTemplate jdbc;
     private final AdvisoryNotificationService notifService;
+    private final BoeAlertPrefsService prefsService;
+    private final ObjectMapper mapper;
 
-    public BoeAlertService(JdbcTemplate jdbc, AdvisoryNotificationService notifService) {
+    public BoeAlertService(JdbcTemplate jdbc,
+                           AdvisoryNotificationService notifService,
+                           BoeAlertPrefsService prefsService,
+                           ObjectMapper mapper) {
         this.jdbc = jdbc;
         this.notifService = notifService;
+        this.prefsService = prefsService;
+        this.mapper = mapper;
     }
 
     @Scheduled(cron = "0 0 6 * * *")
     public void runScheduled() {
-        try { runForDate(LocalDate.now()); }
-        catch (Exception ex) {
+        try {
+            runForDate(LocalDate.now());
+        } catch (Exception ex) {
             log.warn("BOE-RSS: fallo en scheduler diario", ex);
         }
     }
+
+    // ====================================================================
+    //  Pasada diaria
+    // ====================================================================
 
     public RunSummary runForDate(LocalDate date) {
         int hits = 0;
         int newInserts = 0;
         try {
-            String url = "https://www.boe.es/datosabiertos/api/boe/sumario/"
-                    + date.format(API_DATE);
-            HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                    .header("Accept", "application/json")
-                    .timeout(Duration.ofSeconds(30))
-                    .GET().build();
-            HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() >= 400) {
-                log.info("BOE-RSS: no hay boletín para {} (HTTP {})", date, res.statusCode());
-                return new RunSummary(date.toString(), 0, 0, "Sin boletín");
+            List<BoeItem> items = fetchItems(date);
+            if (items.isEmpty()) {
+                log.info("BOE-RSS: no hay boletín para {} (o venía vacío)", date);
+                return new RunSummary(date.toString(), 0, 0, 0, "Sin boletín");
             }
-            String body = res.body();
-            List<BoeHit> hitsList = parseAndFilter(body);
-            hits = hitsList.size();
-            for (BoeHit hit : hitsList) {
-                if (insertIfNew(hit, date)) {
-                    newInserts++;
-                    notifyAdvisories(hit, date);
+
+            // Un aviso puede interesarle a varias asesorías. Se guarda UNA fila
+            // en el catálogo (UK por boe_id) y se notifica a cada una por
+            // separado, con las palabras que SU filtro disparó — si no, dos
+            // asesorías con filtros distintos verían el motivo de la otra.
+            Map<String, Match> catalogo = new LinkedHashMap<>();
+            for (String advisoryId : advisoryCompanyIds()) {
+                BoeAlertPrefs prefs = prefsService.get(advisoryId);
+                List<Match> matches = BoeMatcher.filter(items, prefs);
+                for (Match m : matches) {
+                    catalogo.putIfAbsent(m.item().id(), m);
+                    notifyCompany(advisoryId, m, date);
                 }
             }
+
+            hits = catalogo.size();
+            for (Match m : catalogo.values()) {
+                if (insertIfNew(m, date)) newInserts++;
+            }
+            log.info("BOE-RSS: fecha {} → {} articulos, {} avisos ({} nuevos)",
+                    date, items.size(), hits, newInserts);
+            return new RunSummary(date.toString(), hits, newInserts, items.size(), null);
         } catch (Exception ex) {
             log.warn("BOE-RSS: error para {}", date, ex);
-            return new RunSummary(date.toString(), hits, newInserts, ex.getMessage());
+            return new RunSummary(date.toString(), hits, newInserts, 0, ex.getMessage());
         }
-        log.info("BOE-RSS: fecha {} → {} hits ({} nuevos)", date, hits, newInserts);
-        return new RunSummary(date.toString(), hits, newInserts, null);
     }
 
-    private List<BoeHit> parseAndFilter(String body) {
-        List<BoeHit> out = new ArrayList<>();
-        // Parser muy ligero: no usa Jackson para no añadir dependencia
-        // donde no la había. Lee identificador + título + url + departamento
-        // de bloques contiguos en el JSON.
-        Matcher mId = ID_RE.matcher(body);
-        Matcher mTitle = TITLE_RE.matcher(body);
-        Matcher mUrl = URL_RE.matcher(body);
-        Matcher mDept = DEPT_RE.matcher(body);
-        while (mId.find()) {
-            String id = mId.group(1);
-            String title = mTitle.find() ? unescape(mTitle.group(1)) : "";
-            String url = mUrl.find() ? unescape(mUrl.group(1)) : "";
-            String dept = mDept.find() ? unescape(mDept.group(1)) : "";
-            List<String> matched = matchedKeywords(title);
-            if (matched.isEmpty()) continue;
-            out.add(new BoeHit(id, title, url, dept, String.join(", ", matched)));
+    // ====================================================================
+    //  Descarga + parseo del sumario
+    // ====================================================================
+
+    /**
+     * Descarga el sumario del día y devuelve TODOS sus artículos, sin filtrar.
+     * Filtrar es cosa de {@link BoeMatcher}, que se aplica una vez por empresa.
+     */
+    public List<BoeItem> fetchItems(LocalDate date) throws Exception {
+        String url = "https://www.boe.es/datosabiertos/api/boe/sumario/" + date.format(API_DATE);
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(20))
+                .header("Accept", "application/json")
+                .GET().build();
+        HttpResponse<String> res = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() != 200) {
+            log.info("BOE-RSS: no hay boletín para {} (HTTP {})", date, res.statusCode());
+            return List.of();
+        }
+        return parseItems(res.body());
+    }
+
+    /**
+     * Recorre {@code data.sumario.diario[].seccion[].departamento[].epigrafe[].item[]}.
+     *
+     * <p>Ojo con la API del BOE (comprobado contra el sumario real del
+     * 19-nov-2026, CLAUDE.md §10.ter): cuando un nivel tiene UN solo hijo
+     * devuelve el objeto suelto en vez de un array. Por eso todo pasa por
+     * {@link #asArray}; sin eso, los días flojos se perderían enteros en
+     * silencio.
+     */
+    List<BoeItem> parseItems(String body) throws Exception {
+        List<BoeItem> out = new ArrayList<>();
+        JsonNode root = mapper.readTree(body);
+        JsonNode sumario = root.path("data").path("sumario");
+        for (JsonNode dia : asArray(sumario.path("diario"))) {
+            for (JsonNode sec : asArray(dia.path("seccion"))) {
+                String secCode = sec.path("codigo").asText("");
+                String secName = sec.path("nombre").asText("");
+                for (JsonNode dep : asArray(sec.path("departamento"))) {
+                    String depName = dep.path("nombre").asText("");
+                    for (JsonNode epi : asArray(dep.path("epigrafe"))) {
+                        for (JsonNode it : asArray(epi.path("item"))) {
+                            addItem(out, it, depName, secCode, secName);
+                        }
+                    }
+                    // Algunos departamentos cuelgan los items directamente,
+                    // sin epígrafe intermedio.
+                    for (JsonNode it : asArray(dep.path("item"))) {
+                        addItem(out, it, depName, secCode, secName);
+                    }
+                }
+            }
         }
         return out;
     }
 
-    private List<String> matchedKeywords(String title) {
-        if (title == null || title.isBlank()) return List.of();
-        String low = title.toLowerCase();
-        List<String> hits = new ArrayList<>();
-        for (String k : KEYWORDS) {
-            if (low.contains(k.toLowerCase())) hits.add(k);
-        }
-        return hits;
+    private void addItem(List<BoeItem> out, JsonNode it, String depName,
+                         String secCode, String secName) {
+        String id = it.path("identificador").asText("");
+        if (id.isBlank()) return;
+        out.add(new BoeItem(
+                id,
+                it.path("titulo").asText(""),
+                it.path("url_pdf").path("texto").asText(""),
+                depName, secCode, secName));
     }
 
-    private boolean insertIfNew(BoeHit hit, LocalDate date) {
+    /** Un nodo que puede venir como array o como objeto suelto. */
+    private static List<JsonNode> asArray(JsonNode node) {
+        List<JsonNode> out = new ArrayList<>();
+        if (node == null || node.isMissingNode() || node.isNull()) return out;
+        if (node.isArray()) {
+            node.forEach(out::add);
+        } else {
+            out.add(node);
+        }
+        return out;
+    }
+
+    // ====================================================================
+    //  Vista previa (BOE-FILTRO) — afinar sin ensuciar la bandeja
+    // ====================================================================
+
+    /**
+     * Devuelve lo que la empresa RECIBIRÍA de un día concreto con unas
+     * preferencias dadas, <b>sin guardar ni notificar nada</b>.
+     *
+     * <p>Es la pieza que hace que el filtro se pueda ajustar de verdad: se
+     * prueba contra un día real del BOE (uno de los que llenaron la bandeja) y
+     * se ve el efecto antes de guardar, en vez de cambiar palabras a ciegas y
+     * esperar a mañana a las 06:00.
+     */
+    public PreviewResult preview(LocalDate date, BoeAlertPrefs prefs) {
+        try {
+            List<BoeItem> items = fetchItems(date);
+            List<Match> matches = BoeMatcher.filter(items, prefs);
+            List<PreviewItem> out = new ArrayList<>();
+            for (Match m : matches) {
+                out.add(new PreviewItem(
+                        m.item().id(), m.item().title(), m.item().url(),
+                        m.item().department(), m.item().sectionName(),
+                        String.join(", ", m.keywords())));
+            }
+            return new PreviewResult(date.toString(), items.size(), out.size(), out, null);
+        } catch (Exception ex) {
+            log.warn("BOE-RSS: preview fallo para {}", date, ex);
+            return new PreviewResult(date.toString(), 0, 0, List.of(), ex.getMessage());
+        }
+    }
+
+    public record PreviewItem(String boeId, String title, String url,
+                              String department, String section, String keywordsMatched) {}
+
+    public record PreviewResult(String date, int totalArticles, int matched,
+                                List<PreviewItem> items, String error) {}
+
+    // ====================================================================
+    //  Persistencia y notificación
+    // ====================================================================
+
+    private List<String> advisoryCompanyIds() {
+        return jdbc.queryForList("""
+                SELECT id FROM companies
+                 WHERE company_type IN ('INTERNAL', 'ADVISORY')
+                   AND parent_company_id IS NULL
+                """, String.class);
+    }
+
+    private boolean insertIfNew(Match m, LocalDate date) {
         try {
             int n = jdbc.update("""
                     INSERT IGNORE INTO boe_alerts
                            (id, alert_date, boe_id, title, url, department,
-                            keywords_matched)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                            keywords_matched, section_code, section_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     UUID.randomUUID().toString(),
-                    java.sql.Date.valueOf(date), hit.id(),
-                    truncate(hit.title(), 500),
-                    truncate(hit.url(), 500),
-                    truncate(hit.department(), 200),
-                    truncate(hit.keywordsMatched(), 300));
+                    java.sql.Date.valueOf(date), m.item().id(),
+                    truncate(m.item().title(), 500),
+                    truncate(m.item().url(), 500),
+                    truncate(m.item().department(), 200),
+                    truncate(String.join(", ", m.keywords()), 300),
+                    truncate(m.item().sectionCode(), 10),
+                    truncate(m.item().sectionName(), 160));
             return n > 0;
         } catch (RuntimeException ex) {
-            log.warn("BOE-RSS: no se pudo guardar {}", hit.id(), ex);
+            log.warn("BOE-RSS: no se pudo guardar {}", m.item().id(), ex);
             return false;
         }
     }
 
-    private void notifyAdvisories(BoeHit hit, LocalDate date) {
+    private void notifyCompany(String companyId, Match m, LocalDate date) {
         try {
-            List<String> advisoryIds = jdbc.queryForList("""
-                    SELECT id FROM companies
-                     WHERE company_type IN ('INTERNAL', 'ADVISORY')
-                       AND parent_company_id IS NULL
-                    """, String.class);
-            for (String advisoryId : advisoryIds) {
-                try {
-                    notifService.emit(new AdvisoryNotificationService.EmitRequest(
-                            advisoryId, null,
-                            "BOE_FISCAL_LABOR",
-                            AdvisoryNotificationService.SEVERITY_INFO,
-                            "BOE — " + truncate(hit.title(), 150),
-                            "Palabras clave: " + hit.keywordsMatched()
-                                    + (hit.department().isEmpty() ? ""
-                                        : "\nDepartamento: " + hit.department())
-                                    + (hit.url().isEmpty() ? ""
-                                        : "\nURL: " + hit.url()),
-                            "boe:" + hit.id()));
-                } catch (RuntimeException ex) {
-                    log.debug("BOE-RSS: no se pudo notificar a {}", advisoryId);
-                }
-            }
+            notifService.emit(new AdvisoryNotificationService.EmitRequest(
+                    companyId, null,
+                    "BOE_FISCAL_LABOR",
+                    AdvisoryNotificationService.SEVERITY_INFO,
+                    "BOE — " + truncate(m.item().title(), 150),
+                    "Palabras clave: " + String.join(", ", m.keywords())
+                            + (m.item().department().isEmpty() ? ""
+                                : "\nDepartamento: " + m.item().department())
+                            + (m.item().url().isEmpty() ? ""
+                                : "\nURL: " + m.item().url()),
+                    "boe:" + m.item().id()));
         } catch (RuntimeException ex) {
-            log.warn("BOE-RSS: error notificando", ex);
+            log.debug("BOE-RSS: no se pudo notificar a {}", companyId);
         }
-    }
-
-    private static String unescape(String s) {
-        return s == null ? "" : s.replace("\\\"", "\"").replace("\\n", " ").replace("\\/", "/");
     }
 
     private static String truncate(String s, int max) {
@@ -202,15 +334,17 @@ public class BoeAlertService {
         return s.length() <= max ? s : s.substring(0, max - 1);
     }
 
-    public record BoeHit(String id, String title, String url, String department,
-                          String keywordsMatched) {}
+    public record RunSummary(String date, int hits, int newInserts,
+                             int totalArticles, String error) {}
 
-    public record RunSummary(String date, int hits, int newInserts, String error) {}
+    // ====================================================================
+    //  Listado
+    // ====================================================================
 
     public List<Alert> listRecent(int days) {
         return jdbc.query("""
                 SELECT id, alert_date, boe_id, title, url, department,
-                       keywords_matched, created_at
+                       keywords_matched, section_name, created_at
                   FROM boe_alerts
                  WHERE alert_date >= ?
                  ORDER BY alert_date DESC, created_at DESC
@@ -222,21 +356,52 @@ public class BoeAlertService {
                         rs.getString("url"),
                         rs.getString("department"),
                         rs.getString("keywords_matched"),
+                        rs.getString("section_name"),
                         rs.getTimestamp("created_at").toInstant().toString()),
                 java.sql.Date.valueOf(LocalDate.now().minusDays(Math.max(1, days))));
     }
 
     public record Alert(String id, String alertDate, String boeId, String title,
-                          String url, String department, String keywordsMatched,
-                          String createdAt) {}
+                        String url, String department, String keywordsMatched,
+                        String section, String createdAt) {}
+
+    // ====================================================================
+    //  REST
+    // ====================================================================
+
+    /** Cuerpo de guardado/preview de preferencias (listas ya desgranadas). */
+    public record PrefsPayload(Boolean enabled, List<String> sections,
+                               List<String> departments, List<String> keywords,
+                               String date) {
+
+        BoeAlertPrefs toPrefs() {
+            return new BoeAlertPrefs(
+                    enabled == null || enabled,
+                    sections, departments, keywords);
+        }
+    }
+
+    public record PrefsView(boolean enabled, List<String> sections,
+                            List<String> departments, List<String> keywords,
+                            List<BoeAlertPrefs.Section> sectionCatalog,
+                            List<String> knownDepartments,
+                            List<String> defaultKeywords) {}
 
     @RestController
     @RequestMapping("/api/boe-alerts")
     @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
     public static class Controller {
-        private final BoeAlertService service;
 
-        public Controller(BoeAlertService service) { this.service = service; }
+        private final BoeAlertService service;
+        private final BoeAlertPrefsService prefsService;
+        private final TenantContext tenant;
+
+        public Controller(BoeAlertService service, BoeAlertPrefsService prefsService,
+                          TenantContext tenant) {
+            this.service = service;
+            this.prefsService = prefsService;
+            this.tenant = tenant;
+        }
 
         @GetMapping
         public List<Alert> list(
@@ -250,6 +415,35 @@ public class BoeAlertService {
             LocalDate date = dateStr == null || dateStr.isBlank()
                     ? LocalDate.now() : LocalDate.parse(dateStr);
             return service.runForDate(date);
+        }
+
+        /** Preferencias de la empresa activa + lo que la pantalla necesita para ofrecerlas. */
+        @GetMapping("/prefs")
+        public PrefsView prefs() {
+            BoeAlertPrefs p = prefsService.get(tenant.getCurrentCompanyId());
+            return new PrefsView(p.enabled(), p.sections(), p.departments(), p.keywords(),
+                    BoeAlertPrefs.sectionCatalog(), prefsService.knownDepartments(),
+                    BoeAlertPrefs.DEFAULT_KEYWORDS);
+        }
+
+        @PutMapping("/prefs")
+        public PrefsView savePrefs(@RequestBody PrefsPayload body) {
+            BoeAlertPrefs saved = prefsService.save(
+                    tenant.getCurrentCompanyId(), body.toPrefs());
+            return new PrefsView(saved.enabled(), saved.sections(), saved.departments(),
+                    saved.keywords(), BoeAlertPrefs.sectionCatalog(),
+                    prefsService.knownDepartments(), BoeAlertPrefs.DEFAULT_KEYWORDS);
+        }
+
+        /**
+         * Prueba en seco: qué habría llegado de un día concreto con estas
+         * preferencias. No guarda ni notifica.
+         */
+        @PostMapping("/preview")
+        public PreviewResult preview(@RequestBody PrefsPayload body) {
+            LocalDate date = body.date() == null || body.date().isBlank()
+                    ? LocalDate.now() : LocalDate.parse(body.date());
+            return service.preview(date, body.toPrefs());
         }
     }
 }

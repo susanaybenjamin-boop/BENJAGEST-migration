@@ -2266,7 +2266,15 @@ public class SettingsScreen extends ScreenBase {
         runNow.getStyleClass().add("primary-button");
         runNow.setOnAction(ev -> runBoeNow(load));
 
+        // BOE-FILTRO — lo primero de la fila, porque es lo que el usuario viene
+        // a hacer cuando la bandeja se le llena de ruido.
+        Button prefsBtn = new Button(t("settings.boe.btn.prefs"));
+        prefsBtn.setGraphic(icon("fas-filter"));
+        prefsBtn.getStyleClass().add("primary-button");
+        prefsBtn.setOnAction(ev -> openBoePrefsDialog());
+
         HBox filterRow = new HBox(10,
+                prefsBtn,
                 label(t("settings.boe.filter.days"), "form-label"),
                 daysCombo, refresh, runNow, openPdf);
         filterRow.setAlignment(Pos.CENTER_LEFT);
@@ -2276,6 +2284,238 @@ public class SettingsScreen extends ScreenBase {
         VBox layout = new VBox(12, sectionTitle, hint, filterRow, table);
         layout.getStyleClass().add("settings-tab-body");
         return layout;
+    }
+
+    // ====================================================================
+    //  BOE-FILTRO — elegir que avisos del BOE llegan
+    // ====================================================================
+
+    /**
+     * Diálogo "Qué avisos quiero recibir". Benjamin: <i>"el filtro es light, y
+     * se llena de noticias que no interesan, tendríamos que poder escoger qué
+     * queremos que nos llegue"</i>.
+     *
+     * <p>Tres filtros en cadena (sección Y ministerio Y palabra) y, sobre todo,
+     * un botón para <b>probar contra un día real del BOE</b> antes de guardar:
+     * sin eso se cambian palabras a ciegas y hay que esperar a mañana a las
+     * 06:00 para ver si sirvió de algo.
+     */
+    private void openBoePrefsDialog() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(t("settings.boe.prefs.title"));
+        dialog.setHeaderText(t("settings.boe.prefs.header"));
+        dialog.setResizable(true);
+        dialog.getDialogPane().setPrefSize(900, 700);
+        dialog.getDialogPane().getButtonTypes().addAll(
+                ButtonType.CANCEL);
+
+        CheckBox enabled = new CheckBox(t("settings.boe.prefs.enabled"));
+
+        // --- Secciones ---
+        Label secTitle = label(t("settings.boe.prefs.sections"), "settings-section-title");
+        Label secHint = new Label(t("settings.boe.prefs.sections.hint"));
+        secHint.setWrapText(true);
+        secHint.getStyleClass().add("settings-hint");
+        VBox sectionsBox = new VBox(4);
+        java.util.Map<String, CheckBox> sectionChecks = new java.util.LinkedHashMap<>();
+
+        // --- Ministerios ---
+        Label depTitle = label(t("settings.boe.prefs.departments"), "settings-section-title");
+        Label depHint = new Label(t("settings.boe.prefs.departments.hint"));
+        depHint.setWrapText(true);
+        depHint.getStyleClass().add("settings-hint");
+        TextArea departments = new TextArea();
+        departments.setPrefRowCount(4);
+        departments.setPromptText(t("settings.boe.prefs.departments.prompt"));
+        ComboBox<String> knownDeps = new ComboBox<>();
+        knownDeps.setPromptText(t("settings.boe.prefs.departments.known"));
+        knownDeps.setPrefWidth(430);
+        Button addDep = new Button(t("settings.boe.prefs.add"));
+        addDep.setOnAction(ev -> {
+            String v = knownDeps.getValue();
+            if (v == null || v.isBlank()) return;
+            String cur = departments.getText() == null ? "" : departments.getText();
+            if (!cur.contains(v)) {
+                departments.setText(cur.isBlank() ? v : cur + "\n" + v);
+            }
+        });
+        HBox depRow = new HBox(8, knownDeps, addDep);
+        depRow.setAlignment(Pos.CENTER_LEFT);
+
+        // --- Palabras ---
+        Label kwTitle = label(t("settings.boe.prefs.keywords"), "settings-section-title");
+        Label kwHint = new Label(t("settings.boe.prefs.keywords.hint"));
+        kwHint.setWrapText(true);
+        kwHint.getStyleClass().add("settings-hint");
+        TextArea keywords = new TextArea();
+        keywords.setPrefRowCount(8);
+        keywords.setPromptText(t("settings.boe.prefs.keywords.prompt"));
+        Button restoreKw = new Button(t("settings.boe.prefs.restore"));
+
+        // --- Prueba en seco ---
+        Label testTitle = label(t("settings.boe.prefs.test"), "settings-section-title");
+        Label testHint = new Label(t("settings.boe.prefs.test.hint"));
+        testHint.setWrapText(true);
+        testHint.getStyleClass().add("settings-hint");
+        DatePicker testDate = new DatePicker(java.time.LocalDate.now().minusDays(1));
+        Button testBtn = new Button(t("settings.boe.prefs.test.run"));
+        testBtn.setGraphic(icon("fas-vial"));
+        Label testResult = new Label();
+        testResult.setWrapText(true);
+        HBox testRow = new HBox(8, testDate, testBtn, testResult);
+        testRow.setAlignment(Pos.CENTER_LEFT);
+
+        TableView<com.benjagest.ui.model.BoePreviewResult.Item> testTable = new TableView<>();
+        testTable.getStyleClass().add("data-table");
+        testTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        testTable.setPlaceholder(new Label(t("settings.boe.prefs.test.empty")));
+        testTable.setPrefHeight(190);
+        TableColumn<com.benjagest.ui.model.BoePreviewResult.Item, String> cKw =
+                new TableColumn<>(t("settings.boe.col.keywords"));
+        cKw.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().keywordsMatched()));
+        cKw.setPrefWidth(160);
+        TableColumn<com.benjagest.ui.model.BoePreviewResult.Item, String> cTit =
+                new TableColumn<>(t("settings.boe.col.title"));
+        cTit.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
+        cTit.setPrefWidth(520);
+        testTable.getColumns().addAll(List.of(cKw, cTit));
+
+        Button save = new Button(t("settings.boe.prefs.save"));
+        save.getStyleClass().add("primary-button");
+        save.setGraphic(icon("fas-save"));
+
+        VBox body = new VBox(10,
+                enabled,
+                secTitle, secHint, sectionsBox,
+                depTitle, depHint, depRow, departments,
+                kwTitle, kwHint, keywords, restoreKw,
+                new Separator(),
+                testTitle, testHint, testRow, testTable,
+                new Separator(), save);
+        body.setPadding(new Insets(6));
+        ScrollPane sp = new ScrollPane(body);
+        sp.setFitToWidth(true);
+        dialog.getDialogPane().setContent(sp);
+
+        // --- Carga de las preferencias actuales ---
+        Task<com.benjagest.ui.model.BoeAlertPrefsView> load = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.BoeAlertPrefsView call() throws Exception {
+                return altaApiClient.getBoeAlertPrefs();
+            }
+        };
+        load.setOnSucceeded(ev -> {
+            com.benjagest.ui.model.BoeAlertPrefsView v = load.getValue();
+            enabled.setSelected(v.enabled());
+            sectionsBox.getChildren().clear();
+            sectionChecks.clear();
+            for (var sec : v.sectionCatalog()) {
+                CheckBox cb = new CheckBox(sec.name());
+                cb.setSelected(v.sections().isEmpty() || v.sections().contains(sec.code()));
+                sectionChecks.put(sec.code(), cb);
+                sectionsBox.getChildren().add(cb);
+            }
+            departments.setText(String.join("\n", v.departments()));
+            keywords.setText(String.join("\n", v.keywords()));
+            knownDeps.getItems().setAll(v.knownDepartments());
+            restoreKw.setOnAction(e2 -> keywords.setText(String.join("\n", v.defaultKeywords())));
+        });
+        load.setOnFailed(ev -> showError(t("settings.boe.prefs.load.fail"),
+                load.getException() == null ? "" : load.getException().getMessage()));
+        start(load, "boe-prefs-load");
+
+        // Lee de los controles. Lista VACIA = no filtrar por eso; por eso
+        // "todas las secciones marcadas" se manda como lista vacia y no como
+        // las ocho, que significaria lo mismo pero envejeceria mal si el BOE
+        // añade una seccion nueva.
+        java.util.function.Supplier<List<String>> readSections = () -> {
+            List<String> all = new ArrayList<>(sectionChecks.keySet());
+            List<String> sel = new ArrayList<>();
+            for (var e : sectionChecks.entrySet()) {
+                if (e.getValue().isSelected()) sel.add(e.getKey());
+            }
+            return sel.size() == all.size() ? List.of() : sel;
+        };
+        java.util.function.Function<TextArea, List<String>> readLines = ta -> {
+            List<String> out = new ArrayList<>();
+            String txt = ta.getText() == null ? "" : ta.getText();
+            for (String line : txt.split("\\r?\\n")) {
+                String v = line.trim();
+                if (!v.isEmpty() && !out.contains(v)) out.add(v);
+            }
+            return out;
+        };
+
+        // Desmarcar TODAS las secciones seria la trampa de esta pantalla: la
+        // lista vacia significa "no filtrar por seccion", asi que el usuario
+        // que las desmarca todas esperando no recibir nada recibiria MAS. Se
+        // le dice y se le manda al interruptor de arriba, que es lo que
+        // buscaba.
+        java.util.function.BooleanSupplier algunaSeccion = () -> {
+            for (CheckBox cb : sectionChecks.values()) {
+                if (cb.isSelected()) return true;
+            }
+            showError(t("settings.boe.prefs.no_section.title"),
+                    t("settings.boe.prefs.no_section.body"));
+            return false;
+        };
+
+        testBtn.setOnAction(ev -> {
+            java.time.LocalDate d = testDate.getValue();
+            if (d == null) return;
+            if (!algunaSeccion.getAsBoolean()) return;
+            List<String> secs = readSections.get();
+            List<String> deps = readLines.apply(departments);
+            List<String> kws = readLines.apply(keywords);
+            boolean en = enabled.isSelected();
+            testResult.setText(t("settings.boe.prefs.test.running"));
+            testTable.getItems().clear();
+            Task<com.benjagest.ui.model.BoePreviewResult> task = new Task<>() {
+                @Override
+                protected com.benjagest.ui.model.BoePreviewResult call() throws Exception {
+                    return altaApiClient.previewBoeAlerts(d.toString(), en, secs, deps, kws);
+                }
+            };
+            task.setOnSucceeded(e2 -> {
+                var r = task.getValue();
+                if (r.error() != null && !r.error().isBlank()) {
+                    testResult.setText(r.error());
+                    return;
+                }
+                testResult.setText(t("settings.boe.prefs.test.result")
+                        .replace("{total}", String.valueOf(r.totalArticles()))
+                        .replace("{n}", String.valueOf(r.matched())));
+                testTable.setItems(FXCollections.observableArrayList(r.items()));
+            });
+            task.setOnFailed(e2 -> testResult.setText(
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "boe-prefs-preview");
+        });
+
+        save.setOnAction(ev -> {
+            if (!algunaSeccion.getAsBoolean()) return;
+            List<String> secs = readSections.get();
+            List<String> deps = readLines.apply(departments);
+            List<String> kws = readLines.apply(keywords);
+            boolean en = enabled.isSelected();
+            Task<Void> task = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    altaApiClient.saveBoeAlertPrefs(en, secs, deps, kws);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(e2 -> {
+                showInfo(t("settings.boe.prefs.saved.title"), t("settings.boe.prefs.saved.body"));
+                dialog.setResult(null);
+                dialog.close();
+            });
+            task.setOnFailed(e2 -> showError(t("settings.boe.prefs.save.fail"),
+                    task.getException() == null ? "" : task.getException().getMessage()));
+            start(task, "boe-prefs-save");
+        });
+
+        dialog.showAndWait();
     }
 
     private void loadBoeAlerts(TableView<com.benjagest.ui.model.BoeAlertEntry> table, Integer days) {
