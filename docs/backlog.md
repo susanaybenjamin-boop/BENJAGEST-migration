@@ -2801,6 +2801,52 @@ Sobre el bloque NOM, construido el flujo completo estilo A3/Nomio:
   se publique la norma de retenciones/cotización del nuevo año (recordatorio de
   actualizar las tablas por año).
 
+### ⬜ BOE-FILTRO — poder elegir qué avisos del BOE llegan (pedido por Benjamin, 2026-11-20)
+
+> Benjamin: *"cuando llegan del BOE notificaciones, el filtro es light, y se
+> llena de noticias que no interesan, tendríamos que poder escoger qué queremos
+> que nos llegue"*.
+
+**Confirmado leyendo el código** (`backend/boe/BoeAlertService.java`, V103).
+No es solo que el filtro sea corto: hay **cuatro** cosas, y la primera es la
+que causa el ruido.
+
+1. **Hay keywords comodín que matchean media España.** `KEYWORDS` incluye
+   `"Real Decreto"` y `"RD "`. El BOE publica Reales Decretos a diario sobre
+   nombramientos, subvenciones, indultos, condecoraciones… **todos entran**.
+   `"BOE-A-2026"` y `"BOE-A-2027"` tampoco pintan nada como filtro temático
+   (se comparan contra el TÍTULO, no contra el identificador): parecen restos.
+2. **El match es `contains()` sin límites de palabra** (`matchedKeywords`), con
+   título y keyword en minúsculas. Así cualquier keyword corta engancha dentro
+   de otra palabra. Lo correcto es comparar por palabra completa.
+3. **No hay NADA configurable.** `KEYWORDS` es una constante `static final`, la
+   tabla `boe_alerts` **no tiene `company_id`** (es global, UK por `boe_id`) y
+   `notifyAdvisories()` emite a **TODAS** las asesorías. Para "escoger qué me
+   llega" hace falta: keywords por empresa (tabla nueva o `company_id` en una
+   tabla de preferencias) + pantalla en Configuración → Alertas BOE, que HOY
+   solo lista lo recibido (`SettingsScreen.settingsBoeAlertsTab`, UI-BOE-ALERTS
+   `bf2d644`), no deja elegir nada.
+4. **Palanca barata y potente que ya está medio hecha: filtrar por
+   DEPARTAMENTO.** El parser ya extrae y guarda `department` (`DEPT_RE`,
+   columna `boe_alerts.department`) **y no se usa para filtrar**. Quedarse solo
+   con Hacienda / Trabajo y Economía Social / Inclusión, Seguridad Social y
+   Migraciones quitaría la mayor parte del ruido sin tocar ni una keyword.
+   Propuesta: departamento (lista corta de ministerios) **Y** keyword, en vez
+   de solo keyword.
+
+**Bug aparte, de paso** (no es lo que pide Benjamin, pero está ahí y conviene
+arreglarlo en el mismo slice): `parseAndFilter` recorre el JSON con **cuatro
+`Matcher.find()` independientes** (id, título, url, departamento). En cuanto un
+artículo del sumario no trae `url_pdf` o `departamento`, los cuatro punteros se
+**desincronizan** y a partir de ahí cada título se empareja con el identificador
+y el enlace de OTRO artículo. O sea: avisos con el PDF equivocado. Arreglarlo
+exige recorrer el JSON por bloques (o meter Jackson, que en backend sí está).
+
+**Cuando se ataque, VERIFICAR EN EJECUCIÓN (§10.ter)**: el endpoint de barrido
+manual permite correr un día concreto del BOE y contar hits ANTES y DESPUÉS del
+cambio — con un día real de los que a Benjamin le llenaron la bandeja, no con
+uno inventado.
+
 ---
 
 ## 2026-06-14 — PROPUESTA: Análisis financiero del cliente (FIN-ANALYSIS) 📊💰
