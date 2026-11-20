@@ -1,5 +1,6 @@
 package com.benjagest.backend.workspace;
 
+import com.benjagest.backend.billing.invoices.SalesInvoiceSql;
 import com.benjagest.backend.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -82,23 +83,72 @@ public class WorkspaceRepository {
         );
     }
 
+    /**
+     * Tarjetas del inicio. TODAS las cifras son del EJERCICIO EN CURSO
+     * (ano natural del dia de hoy) y solo de documentos VIVOS.
+     *
+     * <p>DASH-E1 (2026-11-20, Benjamin: los widgets de inicio "facturado" y
+     * "facturas" no concuerdan con lo que tengo facturado). Estas cuatro
+     * cifras eran codigo del primer dia del proyecto y nadie las habia tocado:
+     * sumaban TODOS los estados (borradores, anuladas, canceladas) y TODOS los
+     * anos juntos. Lo que cambia:
+     * <ul>
+     *   <li><b>invoices</b>: antes {@code COUNT(*)} de toda la tabla - contaba
+     *       borradores, anuladas y las historicas importadas por PDF de
+     *       cualquier ejercicio. Ahora: emitidas vivas del ano.</li>
+     *   <li><b>billed</b>: antes {@code SUM(total)} de toda la tabla, y
+     *       {@code total} es CON IVA y menos retencion, asi que no podia cuadrar
+     *       con "Ingresos" del cuadro de mando (que es base imponible). Ahora:
+     *       {@code SUM(subtotal)} = base imponible de las emitidas vivas del ano.</li>
+     *   <li><b>expenses</b>: antes {@code SUM(total_amount)} de toda la tabla,
+     *       incluidas las VOID y las DRAFT de cualquier ano. Ahora: base
+     *       imponible de las POSTED del ano (mismo criterio sin-IVA que
+     *       billed, para que las dos tarjetas se puedan restar).</li>
+     *   <li><b>payrollNet</b>: leia la tabla {@code payrolls} de la V2, <b>a la
+     *       que no escribe NADIE</b> (el padron real es {@code payslips}, V29),
+     *       asi que la tarjeta mostraba 0,00 EUR siempre. Ahora: neto de las
+     *       nominas no canceladas del ano.</li>
+     * </ul>
+     *
+     * <p>Aviso de interpretacion: "Facturado" se mide sobre FACTURAS, no sobre
+     * el diario. Si hay ventas metidas como asiento manual sin factura,
+     * Contabilidad sumara mas que esta tarjeta - es correcto en los dos sitios,
+     * miden cosas distintas (lo facturado vs. lo contabilizado).
+     */
     public DashboardResponse dashboard(String mode) {
+        String companyId = currentCompanyId();
+        int year = LocalDate.now().getYear();
         return new DashboardResponse(
+                year,
                 count("customers", "company_id = ? AND active = TRUE"),
-                count("sales_invoices", "company_id = ?"),
+                countSql("SELECT COUNT(*) FROM sales_invoices si"
+                        + " WHERE si.company_id = ? AND YEAR(si.invoice_date) = ?"
+                        + SalesInvoiceSql.LIVE_ISSUED, companyId, year),
                 count("employees", "company_id = ? AND active = TRUE"),
                 count("notifications", "company_id = ? AND status <> 'READ'"),
-                amount("SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE company_id = ?", currentCompanyId()),
+                amount("SELECT COALESCE(SUM(si.subtotal), 0) FROM sales_invoices si"
+                        + " WHERE si.company_id = ? AND YEAR(si.invoice_date) = ?"
+                        + SalesInvoiceSql.LIVE_ISSUED, companyId, year),
+                // Pendiente de cobro: a proposito SIN limitar al ejercicio — una
+                // deuda de 2025 sigue pendiente en 2026, y recortarla al ano
+                // haria desaparecer de la vista lo que mas urge cobrar.
                 amount("SELECT COALESCE(SUM(si.total - COALESCE(si.paid_amount, 0)), 0) FROM sales_invoices si"
-                        + " WHERE si.company_id = ? AND si.status = 'VALIDATED'"
-                        + " AND si.payment_status IN ('PENDING','PARTIAL')"
-                        // Excluir rectificativas que anulan una original ya VOIDED (netean
-                        // a cero). Mismo criterio que ClientFinancialsService.
-                        + " AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS ("
-                        + " SELECT 1 FROM sales_invoices o WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))",
-                        currentCompanyId()),
-                amount("SELECT COALESCE(SUM(total_amount), 0) FROM purchase_invoices WHERE company_id = ?", currentCompanyId()),
-                amount("SELECT COALESCE(SUM(net_amount), 0) FROM payrolls WHERE company_id = ?", currentCompanyId()),
+                        + " WHERE si.company_id = ?"
+                        + SalesInvoiceSql.LIVE_ISSUED
+                        + SalesInvoiceSql.STILL_UNPAID,
+                        companyId),
+                // Gasto del ejercicio: base imponible de las compras CONTABILIZADAS.
+                // Se excluyen VOID (anuladas) y DRAFT (recurrentes aun sin validar,
+                // que no son gasto todavia). base_amount puede ser NULL en filas muy
+                // antiguas (la V45 lo backfilleo desde subtotal) -> COALESCE.
+                amount("SELECT COALESCE(SUM(COALESCE(base_amount, 0)), 0) FROM purchase_invoices"
+                        + " WHERE company_id = ? AND status = 'POSTED'"
+                        + " AND YEAR(invoice_date) = ?", companyId, year),
+                // payslips, NO payrolls (ver javadoc). CANCELLED fuera; DRAFT y
+                // CALCULATED cuentan porque son coste comprometido del ejercicio.
+                amount("SELECT COALESCE(SUM(net_amount), 0) FROM payslips"
+                        + " WHERE company_id = ? AND status <> 'CANCELLED'"
+                        + " AND period_year = ?", companyId, year),
                 dashboardItems("""
                         SELECT invoice_number AS title,
                                CONCAT(customer.legal_name, ' - ', payment_status) AS subtitle,
@@ -664,6 +714,16 @@ public class WorkspaceRepository {
                 Long.class,
                 currentCompanyId()
         );
+        return value == null ? 0 : value;
+    }
+
+    /**
+     * COUNT con parametros explicitos. El {@link #count(String, String)} de
+     * arriba solo sabe pasar el companyId; esta variante hace falta en cuanto
+     * la condicion lleva mas de un parametro (p.ej. el ano del ejercicio).
+     */
+    private long countSql(String sql, Object... args) {
+        Long value = jdbcTemplate.queryForObject(sql, Long.class, args);
         return value == null ? 0 : value;
     }
 
