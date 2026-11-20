@@ -104,17 +104,17 @@ public final class I18n {
                 case "dashboardLoadFailed" -> "Could not load the dashboard";
                 case "moduleLoadFailed" -> "Could not load module";
                 case "billed" -> "Billed";
-                case "totalIssued" -> "Total issued";
+                case "totalIssued" -> "Taxable base, issued";
                 case "pendingCollection" -> "Pending collection";
                 case "uncollectedAmount" -> "Uncollected amount";
                 case "registeredExpenses" -> "Registered expenses";
-                case "purchasesSuppliers" -> "Purchases and suppliers";
+                case "purchasesSuppliers" -> "Taxable base, purchases";
                 case "payrollCost" -> "Payroll cost";
-                case "monthlyNet" -> "Monthly net loaded";
+                case "monthlyNet" -> "Net payslips";
                 case "customers" -> "Customers";
                 case "activeCompanies" -> "Active companies";
                 case "invoices" -> "Invoices";
-                case "issuedDocuments" -> "Issued documents";
+                case "issuedDocuments" -> "Issued invoices";
                 case "employees" -> "Employees";
                 case "operationalTeam" -> "Operational team";
                 case "openAlerts" -> "Open alerts";
@@ -373,8 +373,45 @@ public final class I18n {
                 case "billing.tab.invoices" -> "Invoices";
                 case "billing.tab.config" -> "Configuration";
                 case "billing.dash.section" -> "Quick summary";
-                case "billing.dash.hint" -> "The full dashboard with KPIs (monthly billed, pending collection, next due date, VAT chart, etc.) lands in slice F6. Until then this summary shows minimal numbers.";
-                case "billing.dash.tab_title" -> "Overview";
+                // DASH-E3 — the placeholder text ("lands in slice F6") is gone:
+                // the dashboard is real now. The hint says WHERE the numbers
+                // come from, because that was the actual confusion.
+                case "billing.dash.hint" -> "Figures for issued invoices (validated) dated inside the range. Accounting measures the journal instead, so it also counts sales booked as manual entries: the two can differ and both are right.";
+                case "billing.dash.tab_title" -> "Dashboard";
+                case "billing.dash.from" -> "From";
+                case "billing.dash.to" -> "To";
+                case "billing.dash.refresh" -> "Refresh";
+                case "billing.dash.range.year" -> "This year";
+                case "billing.dash.range.quarter" -> "This quarter";
+                case "billing.dash.range.month" -> "This month";
+                case "billing.dash.bad_range" -> "The 'from' date is later than the 'to' date.";
+                case "billing.dash.go_invoices" -> "View invoices";
+                case "billing.dash.drafts_warn" -> "You have {n} draft invoice(s) not issued yet ({amt} taxable base). They are NOT included in the figures above.";
+                case "billing.dash.kpi.base" -> "Billed (taxable base)";
+                case "billing.dash.kpi.base.detail" -> "{n} invoice(s)";
+                case "billing.dash.kpi.vat" -> "VAT charged";
+                case "billing.dash.kpi.retention" -> "Withholdings";
+                case "billing.dash.kpi.total" -> "Invoice total";
+                case "billing.dash.kpi.total.detail" -> "Base + VAT - withheld";
+                case "billing.dash.kpi.avg_ticket" -> "Average invoice";
+                case "billing.dash.kpi.collected" -> "Collected";
+                case "billing.dash.kpi.pending" -> "Pending collection";
+                case "billing.dash.kpi.pending.overdue" -> "{n} overdue";
+                case "billing.dash.kpi.pending.unpaid" -> "{n} unpaid";
+                case "billing.dash.kpi.customers" -> "Customers billed";
+                case "billing.dash.kpi.top_customer" -> "Top customer";
+                case "billing.dash.kpi.voided" -> "Voided";
+                case "billing.dash.kpi.voided.detail" -> "Not counted as billed";
+                case "billing.dash.evolution" -> "Monthly evolution";
+                case "billing.dash.month" -> "Month";
+                case "billing.dash.count" -> "Invoices";
+                case "billing.dash.base" -> "Taxable base";
+                case "billing.dash.vat" -> "VAT";
+                case "billing.dash.total" -> "Total";
+                case "billing.dash.no_data" -> "No invoices in this period";
+                // Las metric.* siguen aqui: las usaba el placeholder y las
+                // podria reclamar otra pantalla. No se borran para no dejar
+                // una clave cruda si queda alguna llamada suelta.
                 case "billing.dash.metric.total" -> "Total invoices";
                 case "billing.dash.metric.total.detail" -> "All statuses";
                 case "billing.dash.metric.drafts" -> "Drafts";
@@ -1384,17 +1421,17 @@ public final class I18n {
             case "dashboardLoadFailed" -> "No se pudo cargar el dashboard";
             case "moduleLoadFailed" -> "No se pudo cargar el modulo";
             case "billed" -> "Facturado";
-            case "totalIssued" -> "Total emitido";
+            case "totalIssued" -> "Base imponible emitida";
             case "pendingCollection" -> "Pendiente de cobro";
             case "uncollectedAmount" -> "Importe no cobrado";
             case "registeredExpenses" -> "Gastos registrados";
-            case "purchasesSuppliers" -> "Compras y proveedores";
+            case "purchasesSuppliers" -> "Base imponible de compras";
             case "payrollCost" -> "Coste de nominas";
-            case "monthlyNet" -> "Neto mensual cargado";
+            case "monthlyNet" -> "Neto de nóminas";
             case "customers" -> "Clientes";
             case "activeCompanies" -> "Empresas activas";
             case "invoices" -> "Facturas";
-            case "issuedDocuments" -> "Documentos emitidos";
+            case "issuedDocuments" -> "Facturas emitidas";
             case "employees" -> "Empleados";
             case "operationalTeam" -> "Equipo operativo";
             case "openAlerts" -> "Avisos abiertos";
@@ -1608,12 +1645,47 @@ public final class I18n {
             case "billing.shell.subtitle" -> "Gestion integral y VeriFactu";
             case "billing.shell.new_invoice" -> "Nueva factura";
             case "billing.shell.load_failed" -> "No se pudo cargar Facturacion (modulo billing activo? rol OWNER/ADMIN/ACCOUNTANT?)";
-            case "billing.tab.dashboard" -> "Dashboard";
+            case "billing.tab.dashboard" -> "Cuadro de mando";
             case "billing.tab.invoices" -> "Facturas";
             case "billing.tab.config" -> "Configuracion";
             case "billing.dash.section" -> "Resumen rapido";
-            case "billing.dash.hint" -> "El dashboard completo con KPIs (facturado mes, pendiente cobro, proximo vencimiento, grafica IVA, etc.) llega en el slice F6. Hasta entonces este resumen se queda con cifras minimas.";
-            case "billing.dash.tab_title" -> "Vista general";
+            // DASH-E3 — fuera el texto de "llega en el slice F6": el cuadro de
+            // mando ya existe. La ayuda dice DE DONDE salen las cifras, que era
+            // justo lo que generaba el descuadre aparente con Contabilidad.
+            case "billing.dash.hint" -> "Cifras de las facturas EMITIDAS (validadas) con fecha dentro del rango. Contabilidad mide el Libro Diario, así que ahí también cuentan las ventas metidas como asiento manual: las dos cifras pueden no coincidir y las dos son correctas.";
+            case "billing.dash.tab_title" -> "Cuadro de mando";
+            case "billing.dash.from" -> "Desde";
+            case "billing.dash.to" -> "Hasta";
+            case "billing.dash.refresh" -> "Actualizar";
+            case "billing.dash.range.year" -> "Este año";
+            case "billing.dash.range.quarter" -> "Este trimestre";
+            case "billing.dash.range.month" -> "Este mes";
+            case "billing.dash.bad_range" -> "La fecha 'desde' es posterior a la fecha 'hasta'.";
+            case "billing.dash.go_invoices" -> "Ver facturas";
+            case "billing.dash.drafts_warn" -> "Tienes {n} factura(s) en borrador sin emitir ({amt} de base). NO están incluidas en las cifras de arriba.";
+            case "billing.dash.kpi.base" -> "Facturado (base)";
+            case "billing.dash.kpi.base.detail" -> "{n} factura(s)";
+            case "billing.dash.kpi.vat" -> "IVA repercutido";
+            case "billing.dash.kpi.retention" -> "Retenciones";
+            case "billing.dash.kpi.total" -> "Total facturado";
+            case "billing.dash.kpi.total.detail" -> "Base + IVA - retención";
+            case "billing.dash.kpi.avg_ticket" -> "Factura media";
+            case "billing.dash.kpi.collected" -> "Cobrado";
+            case "billing.dash.kpi.pending" -> "Pendiente de cobro";
+            case "billing.dash.kpi.pending.overdue" -> "{n} vencidas";
+            case "billing.dash.kpi.pending.unpaid" -> "{n} sin cobrar";
+            case "billing.dash.kpi.customers" -> "Clientes facturados";
+            case "billing.dash.kpi.top_customer" -> "Cliente que más factura";
+            case "billing.dash.kpi.voided" -> "Anuladas";
+            case "billing.dash.kpi.voided.detail" -> "No cuentan como facturado";
+            case "billing.dash.evolution" -> "Evolución mensual";
+            case "billing.dash.month" -> "Mes";
+            case "billing.dash.count" -> "Facturas";
+            case "billing.dash.base" -> "Base imponible";
+            case "billing.dash.vat" -> "IVA";
+            case "billing.dash.total" -> "Total";
+            case "billing.dash.no_data" -> "Sin facturas en este periodo";
+            // Las metric.* se conservan (ver nota en el bloque EN).
             case "billing.dash.metric.total" -> "Total facturas";
             case "billing.dash.metric.total.detail" -> "Todos los estados";
             case "billing.dash.metric.drafts" -> "Borradores";
