@@ -4,6 +4,13 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record DashboardResponse(
+        /**
+         * DASH-E1 - ejercicio al que se refieren TODAS las cifras de abajo
+         * (ano natural en curso). Lo manda el backend para que la UI pueda
+         * rotularlo en las tarjetas: sin el, un "Facturado 12.400 EUR" no dice
+         * de que periodo habla y el usuario no puede cuadrarlo con nada.
+         */
+        int periodYear,
         long customers,
         long invoices,
         long employees,

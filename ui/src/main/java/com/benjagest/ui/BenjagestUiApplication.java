@@ -2732,13 +2732,23 @@ public class BenjagestUiApplication extends Application
         metrics.setVgap(12);
         metrics.setPrefTileWidth(218);
         metrics.setPrefTileHeight(132);
+        // DASH-E1 - el ejercicio va EN EL SUBTITULO de las cuatro tarjetas que
+        // ahora son del ano en curso. Sin el, "Facturado 12.400 EUR" no dice de
+        // que periodo habla y era justo la razon de que no cuadrase con nada.
+        // data.periodYear() puede llegar "0" si el backend es viejo (el parser
+        // devuelve "0" cuando falta el campo): en ese caso el subtitulo se
+        // queda como antes, sin ano inventado.
+        String yr = data.periodYear();
+        boolean hasYear = yr != null && !yr.isBlank() && !"0".equals(yr);
+        java.util.function.BinaryOperator<String> per =
+                (base, year) -> hasYear ? base + " " + year : base;
         metrics.getChildren().addAll(
-                metric(t("billed"), money(data.billed()), t("totalIssued"), "fas-euro-sign", "metric-green"),
+                metric(t("billed"), money(data.billed()), per.apply(t("totalIssued"), yr), "fas-euro-sign", "metric-green"),
                 metric(t("pendingCollection"), money(data.pending()), t("uncollectedAmount"), "fas-hourglass-half", "metric-amber"),
-                metric(t("registeredExpenses"), money(data.expenses()), t("purchasesSuppliers"), "fas-receipt", "metric-blue"),
-                metric(t("payrollCost"), money(data.payrollNet()), t("monthlyNet"), "fas-money-check", "metric-rose"),
+                metric(t("registeredExpenses"), money(data.expenses()), per.apply(t("purchasesSuppliers"), yr), "fas-receipt", "metric-blue"),
+                metric(t("payrollCost"), money(data.payrollNet()), per.apply(t("monthlyNet"), yr), "fas-money-check", "metric-rose"),
                 metric(t("customers"), data.customers(), t("activeCompanies"), "fas-users", "module-teal"),
-                metric(t("invoices"), data.invoices(), t("issuedDocuments"), "fas-file-invoice-dollar", "module-blue"),
+                metric(t("invoices"), data.invoices(), per.apply(t("issuedDocuments"), yr), "fas-file-invoice-dollar", "module-blue"),
                 metric(t("employees"), data.employees(), t("operationalTeam"), "fas-hard-hat", "module-violet"),
                 metric(t("openAlerts"), data.openAlerts(), t("pendingReview"), "fas-bell", "module-red")
         );
@@ -6626,67 +6636,247 @@ public class BenjagestUiApplication extends Application
         return content;
     }
 
-    // ----- Sub-tab Dashboard (placeholder F6) -----
+    // ----- Sub-tab Cuadro de mando (DASH-E3) -----
+
+    /**
+     * DASH-E3 (2026-11-20) — cuadro de mando de Facturacion.
+     *
+     * <p>Benjamin: <i>"el dashboard de facturacion en el modo empresario lo veo
+     * vacio, me gustaria que se viera como en contabilidad el cuadro de mando,
+     * incluso con los filtros"</i>. Lo que habia era el placeholder del "slice
+     * F6": cuatro CONTADORES de facturas, sin importes, sin fechas y sin
+     * filtros, calculados en la UI sobre un listado cortado a 200 facturas (una
+     * empresa con mas facturas veia cifras simplemente falsas).
+     *
+     * <p>Se calca la estructura de {@code AccountingScreen.buildFinancialsTab}:
+     * filtro Desde/Hasta arriba, aviso contextual, tarjetas KPI y tabla de
+     * evolucion mensual; las tarjetas usan la MISMA
+     * {@code UiBuilders.kpiCard} que el cuadro de Contabilidad, no una copia.
+     * Los controles van ARRIBA del listado (patron "Slice 3V" de CLAUDE.md §4).
+     */
+    private DatePicker billingDashFrom;
+    private DatePicker billingDashTo;
+    private javafx.scene.layout.FlowPane billingDashCards;
+    private Label billingDashDraftWarn;
+    private HBox billingDashDraftWarnBox;
+    private TableView<com.benjagest.ui.model.BillingMonthPoint> billingDashMonthly;
 
     private Node billingDashboardTab(BillingBundle bundle) {
-        Label section = label(t("billing.dash.section"), "settings-section-title");
+        int year = LocalDate.now().getYear();
+        billingDashFrom = new DatePicker(LocalDate.of(year, 1, 1));
+        billingDashTo = new DatePicker(LocalDate.now());
+        billingDashFrom.setPrefWidth(130);
+        billingDashTo.setPrefWidth(130);
+
+        Button refresh = new Button(t("billing.dash.refresh"));
+        refresh.setGraphic(icon("fas-sync"));
+        refresh.setOnAction(e -> loadBillingDashboard());
+
+        // Atajos de periodo: el caso real es "quiero ver el trimestre" y
+        // teclear dos fechas a mano cada vez es friccion pura.
+        Button thisYear = new Button(t("billing.dash.range.year"));
+        thisYear.setOnAction(e -> setBillingDashRange(
+                LocalDate.of(LocalDate.now().getYear(), 1, 1), LocalDate.now()));
+        Button thisQuarter = new Button(t("billing.dash.range.quarter"));
+        thisQuarter.setOnAction(e -> {
+            LocalDate now = LocalDate.now();
+            int firstMonthOfQuarter = ((now.getMonthValue() - 1) / 3) * 3 + 1;
+            LocalDate qFrom = LocalDate.of(now.getYear(), firstMonthOfQuarter, 1);
+            setBillingDashRange(qFrom, qFrom.plusMonths(3).minusDays(1));
+        });
+        Button thisMonth = new Button(t("billing.dash.range.month"));
+        thisMonth.setOnAction(e -> {
+            LocalDate now = LocalDate.now();
+            LocalDate mFrom = now.withDayOfMonth(1);
+            setBillingDashRange(mFrom, mFrom.plusMonths(1).minusDays(1));
+        });
+
+        HBox controls = new HBox(8,
+                new Label(t("billing.dash.from")), billingDashFrom,
+                new Label(t("billing.dash.to")), billingDashTo,
+                refresh, new Separator(javafx.geometry.Orientation.VERTICAL),
+                thisYear, thisQuarter, thisMonth);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
         Label hint = new Label(t("billing.dash.hint"));
         hint.setWrapText(true);
         hint.getStyleClass().add("settings-hint");
 
-        TilePane metrics = new TilePane();
-        metrics.setHgap(12);
-        metrics.setVgap(12);
-        metrics.setPrefTileWidth(218);
-        metrics.setPrefTileHeight(132);
-        renderBillingMetrics(metrics, bundle.invoices());
+        // Aviso de borradores: no son facturacion (sin numero ni huella SIF)
+        // pero si son lo que al usuario se le ha quedado a medias.
+        billingDashDraftWarn = new Label();
+        billingDashDraftWarn.setStyle("-fx-text-fill: #b8860b;");
+        billingDashDraftWarn.setWrapText(true);
+        HBox.setHgrow(billingDashDraftWarn, Priority.ALWAYS);
+        Button goInvoices = new Button(t("billing.dash.go_invoices"));
+        goInvoices.setOnAction(e -> {
+            pendingBillingTab = "invoices";
+            showModule("billing");
+        });
+        billingDashDraftWarnBox = new HBox(8, billingDashDraftWarn, goInvoices);
+        billingDashDraftWarnBox.setAlignment(Pos.CENTER_LEFT);
+        billingDashDraftWarnBox.setVisible(false);
+        billingDashDraftWarnBox.setManaged(false);
 
-        // DASH-2 — los KPIs se recalculan solos cuando alguien emite SALES
-        // (cobrar, validar, anular, borrar). Antes solo cambiaban al
-        // reconstruir la vista entera con "Actualizar" de la cabecera.
+        billingDashCards = new javafx.scene.layout.FlowPane(14, 14);
+        billingDashCards.setPadding(new Insets(6, 0, 0, 0));
+
+        Label evoTitle = label(t("billing.dash.evolution"), "settings-section-title");
+        billingDashMonthly = new TableView<>();
+        billingDashMonthly.setPlaceholder(new Label(t("billing.dash.no_data")));
+        billingDashMonthly.setPrefHeight(360);
+        // Tabla ancha dentro de un tab: columnas repartidas para que no se
+        // corten fuera de la ventana (CLAUDE.md §4).
+        billingDashMonthly.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        billingDashMonthly.getColumns().addAll(java.util.List.of(
+                billingMonthCol(t("billing.dash.month"), m -> monthNameEs(m.month())),
+                billingMonthCol(t("billing.dash.count"), m -> String.valueOf(m.count())),
+                billingMonthCol(t("billing.dash.base"), m -> money(m.base())),
+                billingMonthCol(t("billing.dash.vat"), m -> money(m.vat())),
+                billingMonthCol(t("billing.dash.total"), m -> money(m.total()))
+        ));
+
+        VBox body = new VBox(12,
+                hint, controls, billingDashDraftWarnBox,
+                billingDashCards, new Separator(),
+                evoTitle, billingDashMonthly);
+
+        // DASH-2 (se conserva) — los KPIs se recalculan solos cuando alguien
+        // emite SALES (validar, cobrar, anular, borrar). El usuario nunca
+        // pulsa "Refrescar" para ver el resultado de su accion (CLAUDE.md §4).
         com.benjagest.ui.support.RefreshBus.subscribe(
                 com.benjagest.ui.support.RefreshBus.TOPIC_SALES,
-                () -> reloadBillingMetrics(metrics), metrics);
+                this::loadBillingDashboard, billingDashCards);
 
-        VBox body = new VBox(16, section, hint, metrics);
+        loadBillingDashboard();
         return tabLayout(label(t("billing.dash.tab_title"), "settings-section-title"), body, new HBox());
     }
 
-    /** Pinta las 4 tarjetas del resumen sobre la lista de facturas dada. */
-    private void renderBillingMetrics(TilePane metrics, List<SalesInvoiceSummary> invoices) {
-        long total = invoices.size();
-        long drafts = invoices.stream().filter(i -> "DRAFT".equals(i.status())).count();
-        long validated = invoices.stream().filter(i -> "VALIDATED".equals(i.status())).count();
-        // DASH-1 — anuladas y rectificativas no se cobran: mismo criterio que la
-        // columna Cobro del listado (BillingInvoicesScreen), que las pinta "—".
-        // Antes se contaba el payment_status en crudo y sumaban las dos.
-        long pending = invoices.stream()
-                .filter(i -> !i.collectionNotApplicable())
-                .filter(i -> "PENDING".equals(i.paymentStatus()))
-                .count();
+    /** Fija el rango y recarga de una sola vez (los atajos de periodo). */
+    private void setBillingDashRange(LocalDate from, LocalDate to) {
+        billingDashFrom.setValue(from);
+        billingDashTo.setValue(to);
+        loadBillingDashboard();
+    }
 
-        metrics.getChildren().setAll(
-                metric(t("billing.dash.metric.total"), String.valueOf(total), t("billing.dash.metric.total.detail"), "fas-file-invoice", "module-blue"),
-                metric(t("billing.dash.metric.drafts"), String.valueOf(drafts), t("billing.dash.metric.drafts.detail"), "fas-edit", "metric-amber"),
-                metric(t("billing.dash.metric.validated"), String.valueOf(validated), t("billing.dash.metric.validated.detail"), "fas-check", "metric-green"),
-                metric(t("billing.dash.metric.pending"), String.valueOf(pending), t("billing.dash.metric.pending.detail"), "fas-hourglass-half", "metric-rose")
-        );
+    private TableColumn<com.benjagest.ui.model.BillingMonthPoint, String> billingMonthCol(
+            String title,
+            java.util.function.Function<com.benjagest.ui.model.BillingMonthPoint, String> mapper) {
+        TableColumn<com.benjagest.ui.model.BillingMonthPoint, String> col = new TableColumn<>(title);
+        col.setCellValueFactory(cd ->
+                new javafx.beans.property.SimpleStringProperty(mapper.apply(cd.getValue())));
+        return col;
+    }
+
+    private String monthNameEs(int m) {
+        if (m < 1 || m > 12) return String.valueOf(m);
+        return java.time.Month.of(m).getDisplayName(
+                java.time.format.TextStyle.FULL,
+                language == Language.EN
+                        ? java.util.Locale.ENGLISH
+                        : java.util.Locale.forLanguageTag("es-ES"));
     }
 
     /**
-     * Recarga las cifras del resumen sin reconstruir la pestaña. Si la
-     * llamada falla dejamos los números anteriores: mejor un dato viejo
-     * que un panel roto (el error ya se ve en el listado de Facturas).
+     * Carga KPIs + serie mensual. Si una de las dos llamadas falla se dejan
+     * los datos anteriores en pantalla: mejor un dato viejo que un panel
+     * roto (mismo criterio que tenia reloadBillingMetrics).
      */
-    private void reloadBillingMetrics(TilePane metrics) {
-        Task<List<SalesInvoiceSummary>> task = new Task<>() {
+    private void loadBillingDashboard() {
+        if (billingDashFrom == null || billingDashTo == null) return;
+        LocalDate from = billingDashFrom.getValue();
+        LocalDate to = billingDashTo.getValue();
+        if (from == null || to == null) return;
+        if (from.isAfter(to)) {
+            // El backend devolveria 400; se avisa en el sitio en vez de
+            // ensenar un error tecnico por una fecha mal puesta.
+            billingDashDraftWarn.setText(t("billing.dash.bad_range"));
+            billingDashDraftWarnBox.setVisible(true);
+            billingDashDraftWarnBox.setManaged(true);
+            return;
+        }
+
+        Task<com.benjagest.ui.model.BillingKpis> kpiTask = new Task<>() {
             @Override
-            protected List<SalesInvoiceSummary> call() throws Exception {
-                return billingApiClient.listInvoices(null, null, null, 200);
+            protected com.benjagest.ui.model.BillingKpis call() throws Exception {
+                return billingApiClient.billingKpis(from, to);
             }
         };
-        task.setOnSucceeded(ev -> renderBillingMetrics(metrics, task.getValue()));
-        start(task, "billing-dash-refresh");
+        kpiTask.setOnSucceeded(ev -> renderBillingDashboard(kpiTask.getValue()));
+        start(kpiTask, "billing-dash-kpis");
+
+        int year = to.getYear();
+        Task<java.util.List<com.benjagest.ui.model.BillingMonthPoint>> monthlyTask = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.BillingMonthPoint> call() throws Exception {
+                return billingApiClient.billingKpisMonthly(year);
+            }
+        };
+        monthlyTask.setOnSucceeded(ev -> billingDashMonthly.setItems(
+                javafx.collections.FXCollections.observableArrayList(monthlyTask.getValue())));
+        start(monthlyTask, "billing-dash-monthly");
+    }
+
+    /** Pinta las tarjetas del cuadro de mando de Facturacion. */
+    private void renderBillingDashboard(com.benjagest.ui.model.BillingKpis k) {
+        if (k == null) return;
+        boolean overdue = k.overdueCount() > 0;
+
+        java.util.List<Node> cards = new java.util.ArrayList<>();
+        cards.add(kpiCard(t("billing.dash.kpi.base"), money(k.billedBase()),
+                t("billing.dash.kpi.base.detail").replace("{n}", String.valueOf(k.issuedCount())),
+                "#2e7d32"));
+        cards.add(kpiCard(t("billing.dash.kpi.vat"), money(k.vatCharged()), null, "#6e6e6e"));
+        // La retencion solo la practican algunos sectores; si es 0 la tarjeta
+        // seria ruido y se omite.
+        if (k.retention() != null && k.retention().signum() != 0) {
+            cards.add(kpiCard(t("billing.dash.kpi.retention"), money(k.retention()), null, "#6e6e6e"));
+        }
+        cards.add(kpiCard(t("billing.dash.kpi.total"), money(k.billedTotal()),
+                t("billing.dash.kpi.total.detail"), "#1565c0"));
+        cards.add(kpiCard(t("billing.dash.kpi.avg_ticket"), money(k.avgTicket()), null, "#6e6e6e"));
+        cards.add(kpiCard(t("billing.dash.kpi.collected"), money(k.collected()), null, "#2e7d32"));
+
+        // Pendiente de cobro: clicable, lleva al listado filtrado por Cobro =
+        // Pendiente. Mismo gesto que la tarjeta homonima de Contabilidad.
+        VBox pendingCard = kpiCard(t("billing.dash.kpi.pending"), money(k.pendingCollections()),
+                overdue
+                        ? t("billing.dash.kpi.pending.overdue").replace("{n}", String.valueOf(k.overdueCount()))
+                        : t("billing.dash.kpi.pending.unpaid").replace("{n}", String.valueOf(k.pendingCount())),
+                overdue ? "#c62828" : "#1565c0");
+        pendingCard.setCursor(javafx.scene.Cursor.HAND);
+        pendingCard.setOnMouseClicked(e -> navigateTo("billing", "PENDING"));
+        cards.add(pendingCard);
+
+        cards.add(kpiCard(t("billing.dash.kpi.customers"), String.valueOf(k.customersBilled()),
+                null, "#6e6e6e"));
+        // Cliente top: sin facturas en el rango no hay nada que decir, asi que
+        // la tarjeta no se pinta en vez de ensenar un "-".
+        if (k.topCustomerName() != null && !k.topCustomerName().isBlank()) {
+            cards.add(kpiCard(t("billing.dash.kpi.top_customer"), money(k.topCustomerBase()),
+                    k.topCustomerName(), "#6e6e6e"));
+        }
+        if (k.voidedCount() > 0) {
+            cards.add(kpiCard(t("billing.dash.kpi.voided"), String.valueOf(k.voidedCount()),
+                    t("billing.dash.kpi.voided.detail"), "#b8860b"));
+        }
+        billingDashCards.getChildren().setAll(cards);
+
+        if (k.draftCount() > 0) {
+            billingDashDraftWarn.setText(t("billing.dash.drafts_warn")
+                    .replace("{n}", String.valueOf(k.draftCount()))
+                    .replace("{amt}", money(k.draftBase())));
+            billingDashDraftWarnBox.setVisible(true);
+            billingDashDraftWarnBox.setManaged(true);
+        } else {
+            billingDashDraftWarnBox.setVisible(false);
+            billingDashDraftWarnBox.setManaged(false);
+        }
+    }
+
+    /** Atajo a la tarjeta KPI compartida con el cuadro de mando de Contabilidad. */
+    private VBox kpiCard(String title, String value, String subtitle, String accent) {
+        return com.benjagest.ui.support.UiBuilders.kpiCard(title, value, subtitle, accent);
     }
 
     // ----- Sub-tab Facturas (listado con filtros) -----

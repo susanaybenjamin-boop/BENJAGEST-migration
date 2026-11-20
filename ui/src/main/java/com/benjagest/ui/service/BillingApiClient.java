@@ -1,5 +1,7 @@
 package com.benjagest.ui.service;
 
+import com.benjagest.ui.model.BillingKpis;
+import com.benjagest.ui.model.BillingMonthPoint;
 import com.benjagest.ui.model.CertificateOption;
 import com.benjagest.ui.model.InvoiceLineDraft;
 import com.benjagest.ui.model.InvoiceTexts;
@@ -1236,6 +1238,70 @@ public class BillingApiClient {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("HTTP " + response.statusCode() + ": " + response.body());
         }
+    }
+
+    // -------- DASH-E2/E3: cuadro de mando de facturacion --------
+
+    /**
+     * Indicadores de facturacion del rango. Un objeto PLANO, asi que el
+     * parsing por campos es seguro aqui (la trampa del regex `\{[^{}]*\}`
+     * de CLAUDE.md §6 es para LISTAS de objetos anidados).
+     */
+    public BillingKpis billingKpis(java.time.LocalDate from, java.time.LocalDate to)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/billing/kpis?from=" + from + "&to=" + to))
+                .timeout(Duration.ofSeconds(12))
+                .GET());
+        ensureOk(r);
+        String j = r.body();
+        return new BillingKpis(
+                textField(j, "from"),
+                textField(j, "to"),
+                intFieldOrZero(j, "issuedCount"),
+                decimalField(j, "billedBase"),
+                decimalField(j, "vatCharged"),
+                decimalField(j, "retention"),
+                decimalField(j, "billedTotal"),
+                decimalField(j, "avgTicket"),
+                decimalField(j, "collected"),
+                decimalField(j, "pendingCollections"),
+                intFieldOrZero(j, "pendingCount"),
+                decimalField(j, "overdueAmount"),
+                intFieldOrZero(j, "overdueCount"),
+                intFieldOrZero(j, "draftCount"),
+                decimalField(j, "draftBase"),
+                intFieldOrZero(j, "voidedCount"),
+                intFieldOrZero(j, "customersBilled"),
+                textField(j, "topCustomerName"),
+                decimalField(j, "topCustomerBase"));
+    }
+
+    /**
+     * Serie mensual del ejercicio (12 puntos). Se usa
+     * {@link #splitJsonObjects(String)} (balanceo de llaves) y no un regex
+     * plano: es la regla de CLAUDE.md §6 y aqui ademas da igual que hoy los
+     * objetos sean planos, porque asi sigue funcionando si algun dia se les
+     * cuelga un sub-objeto.
+     */
+    public List<BillingMonthPoint> billingKpisMonthly(int year)
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = sendAuthorized(HttpRequest.newBuilder(
+                        URI.create(baseUrl + "/billing/kpis/monthly?year=" + year))
+                .timeout(Duration.ofSeconds(12))
+                .GET());
+        ensureOk(r);
+        List<BillingMonthPoint> out = new ArrayList<>();
+        for (String obj : splitJsonObjects(r.body())) {
+            if (!obj.contains("\"month\"")) continue;
+            out.add(new BillingMonthPoint(
+                    intFieldOrZero(obj, "month"),
+                    intFieldOrZero(obj, "count"),
+                    decimalField(obj, "base"),
+                    decimalField(obj, "vat"),
+                    decimalField(obj, "total")));
+        }
+        return out;
     }
 
     private List<SalesInvoiceSummary> parseInvoices(String json) {

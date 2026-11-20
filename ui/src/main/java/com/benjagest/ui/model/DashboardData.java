@@ -3,6 +3,8 @@ package com.benjagest.ui.model;
 import java.util.List;
 
 public record DashboardData(
+        /** DASH-E1 - ejercicio de las cifras (lo rotulan las tarjetas). */
+        String periodYear,
         String customers,
         String invoices,
         String employees,

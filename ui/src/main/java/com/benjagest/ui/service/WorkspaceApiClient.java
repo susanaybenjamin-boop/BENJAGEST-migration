@@ -47,6 +47,7 @@ public class WorkspaceApiClient {
     public DashboardData dashboard(String mode) throws IOException, InterruptedException {
         String json = send("GET", "/dashboard?mode=" + mode, null);
         return new DashboardData(
+                valueField(json, "periodYear"),
                 valueField(json, "customers"),
                 valueField(json, "invoices"),
                 valueField(json, "employees"),

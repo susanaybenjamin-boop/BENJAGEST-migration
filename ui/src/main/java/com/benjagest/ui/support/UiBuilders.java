@@ -23,6 +23,37 @@ public final class UiBuilders {
         return label;
     }
 
+    /**
+     * DASH-E3 — tarjeta KPI del cuadro de mando: titulo pequeno arriba, valor
+     * grande con color de acento y subtitulo opcional.
+     *
+     * <p>Sale de {@code AccountingScreen.kpiCard}, que era la unica definicion
+     * y vivia privada en esa pantalla. Se sube aqui porque el cuadro de mando
+     * de Facturacion tiene que verse IGUAL que el de Contabilidad (peticion
+     * expresa de Benjamin) y dos copias del mismo estilo acabarian divergiendo.
+     *
+     * <p>Ojo con el ancho: son 210 px fijos, asi que un subtitulo largo se
+     * corta con "...". Los subtitulos van CORTOS a proposito (leccion del
+     * smoke de PAGO-2).
+     */
+    public static VBox kpiCard(String title, String value, String subtitle, String accent) {
+        Label t = new Label(title);
+        t.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 12px;");
+        Label v = new Label(value);
+        v.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: " + accent + ";");
+        VBox card = new VBox(4, t, v);
+        if (subtitle != null && !subtitle.isBlank()) {
+            Label s = new Label(subtitle);
+            s.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 11px;");
+            card.getChildren().add(s);
+        }
+        card.setPadding(new javafx.geometry.Insets(12, 16, 12, 16));
+        card.setPrefWidth(210);
+        card.setStyle("-fx-background-color: white; -fx-border-color: #e0e0e0;"
+                + " -fx-border-radius: 6; -fx-background-radius: 6;");
+        return card;
+    }
+
     /** Envuelve un VBox en el ScrollPane estandar de contenido (fit-to-width). */
     public static ScrollPane scroll(VBox content) {
         ScrollPane scroll = new ScrollPane(content);

@@ -1846,23 +1846,14 @@ public class AccountingScreen {
         return card;
     }
 
-    /** Tarjeta KPI: título arriba, valor grande con color de acento, subtítulo opcional. */
+    /**
+     * Tarjeta KPI: título arriba, valor grande con color de acento, subtítulo
+     * opcional. DASH-E3 — el cuerpo se movió a {@code UiBuilders.kpiCard}
+     * para que el cuadro de mando de Facturación use EXACTAMENTE el mismo
+     * estilo. Este método se queda como atajo local (hay ~20 llamadas).
+     */
     private Node kpiCard(String title, String value, String subtitle, String accent) {
-        Label t = new Label(title);
-        t.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 12px;");
-        Label v = new Label(value);
-        v.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: " + accent + ";");
-        VBox card = new VBox(4, t, v);
-        if (subtitle != null && !subtitle.isBlank()) {
-            Label s = new Label(subtitle);
-            s.setStyle("-fx-text-fill: #6e6e6e; -fx-font-size: 11px;");
-            card.getChildren().add(s);
-        }
-        card.setPadding(new Insets(12, 16, 12, 16));
-        card.setPrefWidth(210);
-        card.setStyle("-fx-background-color: white; -fx-border-color: #e0e0e0;"
-                + " -fx-border-radius: 6; -fx-background-radius: 6;");
-        return card;
+        return com.benjagest.ui.support.UiBuilders.kpiCard(title, value, subtitle, accent);
     }
 
     private String money(BigDecimal v) {
