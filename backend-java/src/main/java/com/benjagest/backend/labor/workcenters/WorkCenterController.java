@@ -36,8 +36,23 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiresRole({"OWNER", "ADMIN", "ACCOUNTANT", "EMPLOYEE"})
 public class WorkCenterController {
 
-    private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5)).build();
+    private static final HttpClient HTTP = buildHttpClient();
+
+    /**
+     * TLS (2026-11-21) — confia en el almacen de Java Y en el de Windows.
+     * Es ADITIVO: lo que ya validaba sigue validando igual, solo se anade un
+     * segundo intento si el primero rechaza. Ver {@code WindowsAwareTrust} y el
+     * caso del BOE, que estuvo 34 dias caido por una raiz que no venia en el
+     * cacerts de Java.
+     */
+    private static HttpClient buildHttpClient() {
+        HttpClient.Builder b = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5));
+        javax.net.ssl.SSLContext ctx =
+                com.benjagest.backend.config.WindowsAwareTrust.sslContextOrNull();
+        if (ctx != null) b.sslContext(ctx);
+        return b.build();
+    }
     private static final Pattern LAT_RE = Pattern.compile("\"lat\"\\s*:\\s*\"([-0-9.]+)\"");
     private static final Pattern LON_RE = Pattern.compile("\"lon\"\\s*:\\s*\"([-0-9.]+)\"");
     private static final Pattern DISPLAY_RE = Pattern.compile("\"display_name\"\\s*:\\s*\"([^\"]+)\"");
