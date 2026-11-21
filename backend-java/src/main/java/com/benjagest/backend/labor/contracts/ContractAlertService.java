@@ -57,9 +57,41 @@ public class ContractAlertService {
      * Diario a las 06:00 hora local. Barre todos los contratos ACTIVE y
      * crea alertas faltantes para los próximos 60 días.
      */
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ContractAlertService.class);
+
+    /**
+     * SUPERV — inyectado por setter: sin supervisor el servicio funciona
+     * igual que siempre (ver la nota de BackupService).
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.benjagest.backend.supervision.JobSupervisor supervisor;
+
     @Scheduled(cron = "0 0 6 * * *")
     public void runDaily() {
-        scan();
+        // SUPERV — antes esto llamaba a scan() a pelo: si reventaba, el unico
+        // rastro quedaba en el log interno de Spring. Son avisos de fin de
+        // periodo de prueba y fin de contrato, con plazos legales: es la tarea
+        // que mas caro sale perder en silencio.
+        long t0 = System.currentTimeMillis();
+        try {
+            ScanResult r = scan();
+            supervise("OK", r.probation() + " periodos de prueba, "
+                    + r.end30() + " a 30 dias, " + r.end60() + " a 60 dias",
+                    System.currentTimeMillis() - t0);
+        } catch (RuntimeException ex) {
+            log.warn("CONTRACT-ALERTS: fallo en el barrido diario", ex);
+            supervise("ERROR", ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+                    System.currentTimeMillis() - t0);
+            throw ex;
+        }
+    }
+
+    private void supervise(String status, String message, long ms) {
+        if (supervisor == null) return;
+        supervisor.record(com.benjagest.backend.supervision.SupervisedJob.CONTRACT_ALERTS,
+                null, status, message, ms);
     }
 
     /**
@@ -85,6 +117,10 @@ public class ContractAlertService {
             notifyAdvisorsAfterScan();
         } catch (Exception ex) {
             // Defensivo: el scan ya está hecho, no romper por noti fallida.
+            // SUPERV: pero ANTES no se escribia ni una linea, asi que un fallo
+            // aqui no dejaba el menor rastro en ningun sitio. Era el fallo mas
+            // silencioso de toda la app.
+            log.warn("CONTRACT-ALERTS: el scan fue bien pero no se pudo avisar a la asesoria", ex);
         }
         return new ScanResult(probation, end30, end60, bday);
     }

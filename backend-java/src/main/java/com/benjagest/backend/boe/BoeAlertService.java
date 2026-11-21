@@ -109,13 +109,43 @@ public class BoeAlertService {
         this.mapper = mapper;
     }
 
+    /**
+     * SUPERV — inyectado por setter (ver la nota de BackupService).
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.benjagest.backend.supervision.JobSupervisor supervisor;
+
     @Scheduled(cron = "0 0 6 * * *")
     public void runScheduled() {
+        long t0 = System.currentTimeMillis();
         try {
-            runForDate(LocalDate.now());
+            RunSummary r = runForDate(LocalDate.now());
+            // SUPERV — OJO: runForDate NO lanza excepcion cuando el BOE falla,
+            // devuelve el motivo en r.error(). Fue exactamente asi como estuvo
+            // 34 dias caido sin que nadie lo supiera: para el que mirase desde
+            // fuera, el metodo "terminaba bien". Si hay error, es ERROR.
+            superviseRun(r, System.currentTimeMillis() - t0);
         } catch (Exception ex) {
             log.warn("BOE-RSS: fallo en scheduler diario", ex);
+            supervise("ERROR", ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+                    System.currentTimeMillis() - t0);
         }
+    }
+
+    private void superviseRun(RunSummary r, long ms) {
+        if (r != null && r.error() != null && !r.error().isBlank()) {
+            supervise("ERROR", r.error(), ms);
+        } else {
+            supervise("OK", r == null ? null
+                    : r.totalArticles() + " articulos, " + r.hits() + " avisos", ms);
+        }
+    }
+
+    private void supervise(String status, String message, long ms) {
+        if (supervisor == null) return;
+        supervisor.record(com.benjagest.backend.supervision.SupervisedJob.BOE_ALERTS,
+                null, status, message, ms);
     }
 
     // ====================================================================

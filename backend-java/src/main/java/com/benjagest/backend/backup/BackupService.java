@@ -64,12 +64,35 @@ public class BackupService {
                         : facturasCfg);
     }
 
+    /**
+     * SUPERV — se inyecta por setter y no por constructor a proposito: el
+     * constructor de este servicio lo usan tests y arranques que no tienen por
+     * que montar la supervision, y añadir un parametro obligatorio los
+     * romperia. Si no hay supervisor, el backup funciona igual que siempre.
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.benjagest.backend.supervision.JobSupervisor supervisor;
+
+    private void supervise(String status, String message, long ms) {
+        if (supervisor == null) return;
+        supervisor.record(com.benjagest.backend.supervision.SupervisedJob.BACKUP,
+                null, status, message, ms);
+    }
+
     /** Lunes 03:00 (cron Spring: sec min hora dia-mes mes dia-semana). */
     @Scheduled(cron = "0 0 3 * * MON")
     public void runScheduled() {
-        try { run(); }
-        catch (Exception ex) {
+        long t0 = System.currentTimeMillis();
+        try {
+            run();
+            // SUPERV — la copia es lo unico irrecuperable: si falla y nadie se
+            // entera, el daño se descubre el dia que hace falta la copia.
+            supervise("OK", null, System.currentTimeMillis() - t0);
+        } catch (Exception ex) {
             log.warn("BACKUP-LOCAL: fallo en backup semanal", ex);
+            supervise("ERROR", ex.getClass().getSimpleName()
+                    + (ex.getMessage() == null ? "" : ": " + ex.getMessage()),
+                    System.currentTimeMillis() - t0);
         }
     }
 
@@ -91,14 +114,22 @@ public class BackupService {
                         long daysSince = java.time.Duration.between(last, java.time.Instant.now()).toDays();
                         if (daysSince < 7) {
                             log.info("BACKUP-LOCAL: backup reciente ({} días), no se lanza al arrancar", daysSince);
+                            // SKIPPED, no OK: corrio y decidio no hacer nada. Marcarlo
+                            // como exito dejaria a la vigilancia por ausencia ciega
+                            // (cada arranque "renovaria" el ultimo OK sin haber copia).
+                            supervise("SKIPPED", "Backup reciente (" + daysSince + " dias)", 0);
                             return;
                         }
                     }
                 }
                 log.info("BACKUP-LOCAL: backup vencido o inexistente, lanzando al arrancar...");
+                long t0 = System.currentTimeMillis();
                 run();
+                supervise("OK", "Backup de arranque", System.currentTimeMillis() - t0);
             } catch (Exception ex) {
                 log.warn("BACKUP-LOCAL: fallo en backup de arranque", ex);
+                supervise("ERROR", ex.getClass().getSimpleName()
+                        + (ex.getMessage() == null ? "" : ": " + ex.getMessage()), 0);
             }
         });
     }
