@@ -73,25 +73,74 @@ public class UpdateService {
     }
 
     /** Info si hay una versión MÁS NUEVA con .msi; {@code null} si no hay o no se pudo comprobar. */
-    public UpdateInfo checkForUpdate() {
+    /**
+     * SUPERV (2026-11-21) — resultado de la comprobacion.
+     *
+     * <p>Antes {@code checkForUpdate()} devolvia {@code null} tanto si estabas
+     * al dia como si <b>no se habia podido preguntar</b>. Consecuencia: con la
+     * red caida, o con un problema de certificado como el que tumbo el BOE 34
+     * dias, la app te decia tan contenta <i>"ya tienes la ultima version"</i>.
+     * Te podia estar mintiendo durante meses mientras dejabas de recibir los
+     * arreglos. Ahora son tres respuestas distintas y una de ellas es "no lo
+     * se".
+     */
+    public record CheckResult(UpdateInfo update, boolean reachable, String error) {
+
+        /** Hay version nueva. */
+        public static CheckResult found(UpdateInfo info) { return new CheckResult(info, true, null); }
+
+        /** Se pudo preguntar y estas al dia. */
+        public static CheckResult upToDate() { return new CheckResult(null, true, null); }
+
+        /** NO se pudo preguntar. Muy distinto de estar al dia. */
+        public static CheckResult failed(String why) { return new CheckResult(null, false, why); }
+    }
+
+    /**
+     * Comprueba si hay version nueva distinguiendo los tres casos. Ver
+     * {@link CheckResult}.
+     */
+    public CheckResult check() {
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(updateUrl()))
                     .timeout(Duration.ofSeconds(8))
                     .header("Accept", "application/vnd.github+json")
                     .GET().build();
             HttpResponse<String> r = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (r.statusCode() != 200) return null;
+            if (r.statusCode() != 200) {
+                return CheckResult.failed("HTTP " + r.statusCode());
+            }
             String body = r.body();
             String tag = field(body, "tag_name");
-            if (tag == null || tag.isBlank()) return null;
+            if (tag == null || tag.isBlank()) {
+                // Respondio pero no se entiende: es un fallo, no un "al dia".
+                return CheckResult.failed("Respuesta sin tag_name");
+            }
             String latest = tag.replaceFirst("^[vV]", "").trim();
-            if (compareVersions(latest, APP_VERSION) <= 0) return null; // no hay nada más nuevo
+            if (compareVersions(latest, APP_VERSION) <= 0) {
+                return CheckResult.upToDate();
+            }
             String msi = findMsiAsset(body);
-            if (msi == null) return null;
-            return new UpdateInfo(latest, msi);
+            if (msi == null) {
+                return CheckResult.failed("La version " + latest + " no trae instalador");
+            }
+            return CheckResult.found(new UpdateInfo(latest, msi));
         } catch (Exception e) {
-            return null;
+            String why = e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage());
+            return CheckResult.failed(why);
         }
+    }
+
+    /**
+     * Compatibilidad: devuelve la actualizacion o {@code null}. Se conserva
+     * para los llamantes que solo quieren saber si hay version nueva, pero
+     * <b>no distingue "al dia" de "no se pudo preguntar"</b> — quien necesite
+     * esa diferencia (y la necesita cualquiera que avise al usuario) debe usar
+     * {@link #check()}.
+     */
+    public UpdateInfo checkForUpdate() {
+        return check().update();
     }
 
     /** Avisa del avance de la descarga. {@code total} es -1 si el servidor no lo dice. */

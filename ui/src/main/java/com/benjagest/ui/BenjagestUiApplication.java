@@ -582,13 +582,29 @@ public class BenjagestUiApplication extends Application
 
     /** Comprueba si hay actualización. {@code manual}=true avisa también si ya está al día. */
     private void checkForUpdates(boolean manual) {
-        Task<com.benjagest.ui.service.UpdateService.UpdateInfo> task = new Task<>() {
-            @Override protected com.benjagest.ui.service.UpdateService.UpdateInfo call() {
-                return updateService.checkForUpdate();
+        Task<com.benjagest.ui.service.UpdateService.CheckResult> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.UpdateService.CheckResult call() {
+                return updateService.check();
             }
         };
         task.setOnSucceeded(e -> {
-            var info = task.getValue();
+            var result = task.getValue();
+            // SUPERV — que la comprobacion falle se reporta al backend para que
+            // salga en Configuracion -> Estado del sistema junto a las demas
+            // tareas. Si no, esta seria la unica que habria que mirar aparte.
+            reportUpdateCheck(result);
+            // SUPERV — "no se pudo preguntar" ya NO se confunde con "estas al
+            // dia". Antes las dos eran null y la app decia alegremente que
+            // tenias la ultima version aunque llevara meses sin poder mirar.
+            if (result != null && !result.reachable()) {
+                if (manual) {
+                    showError(t("update.unreachable.title"),
+                            t("update.unreachable.body")
+                                    + (result.error() == null ? "" : "\n\n" + result.error()));
+                }
+                return;
+            }
+            var info = result == null ? null : result.update();
             if (info == null) {
                 if (manual) showInfo(t("update.none.title"),
                         t("update.none.body").replace("{v}",
@@ -605,8 +621,34 @@ public class BenjagestUiApplication extends Application
             }
             promptUpdate(info);
         });
-        task.setOnFailed(e -> { if (manual) showError(t("update.fail.title"), ""); });
+        task.setOnFailed(e -> {
+            reportUpdateCheck(com.benjagest.ui.service.UpdateService.CheckResult
+                    .failed(e.getSource().getException() == null
+                            ? "" : e.getSource().getException().toString()));
+            if (manual) showError(t("update.fail.title"), "");
+        });
         start(task, "update-check");
+    }
+
+    /**
+     * SUPERV — cuenta al backend como fue la comprobacion de actualizaciones,
+     * que la hace la UI y no el servicio. En un hilo aparte y tragandose
+     * cualquier fallo: avisar de que algo va mal no puede ser lo que estropee
+     * la sesion del usuario.
+     */
+    private void reportUpdateCheck(com.benjagest.ui.service.UpdateService.CheckResult r) {
+        if (r == null) return;
+        String status = r.reachable() ? "OK" : "ERROR";
+        String message = r.reachable()
+                ? (r.update() == null ? "Al dia" : "Hay version " + r.update().latestVersion())
+                : r.error();
+        Thread.ofVirtual().name("superv-update-report").start(() -> {
+            try {
+                altaApiClient.reportJobRun("update-check", status, message);
+            } catch (Exception ignored) {
+                // Sin conexion con el backend no hay nada que reportar ni que hacer.
+            }
+        });
     }
 
     /** Actualización detectada pero pendiente de mostrar (la app estaba bloqueada). */

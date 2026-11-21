@@ -608,6 +608,14 @@ public class SettingsScreen extends ScreenBase {
             boeTab.setGraphic(icon("fas-newspaper"));
             tabs.getTabs().add(boeTab);
         }
+        // SUPERV — Estado del sistema. Va ANTES de Copias de seguridad porque
+        // es la pantalla que responde "¿esto está funcionando?", incluida la
+        // propia copia. Visible siempre: el caso que la motivó (34 días de
+        // avisos del BOE caídos) le pasó al titular, no a un técnico.
+        Tab systemTab = new Tab(t("settings.tab.system"), settingsSystemStatusTab());
+        systemTab.setGraphic(icon("fas-heartbeat"));
+        tabs.getTabs().add(systemTab);
+
         // BACKUP-LOCAL — pestaña Backups para OWNER/ADMIN.
         Tab backupTab = new Tab(t("settings.tab.backup"), settingsBackupTab());
         backupTab.setGraphic(icon("fas-hdd"));
@@ -2197,6 +2205,153 @@ public class SettingsScreen extends ScreenBase {
             "MODULE_DISABLED",
             "COMPANY_DATA_UPDATED"
     );
+
+    // ====================================================================
+    //  SUPERV — Estado del sistema
+    // ====================================================================
+
+    /**
+     * Pantalla "¿está funcionando lo que la app hace sola?".
+     *
+     * <p>Nace del caso del BOE: el barrido diario estuvo 34 días sin funcionar
+     * (18-oct a 20-nov de 2026) y el único rastro era un {@code log.warn} en un
+     * fichero de 5 MB que no mira nadie. Esta pantalla, existiendo entonces,
+     * habría enseñado <i>"Alertas BOE — último acierto hace 2 días"</i> y se
+     * habría cazado esa misma semana.
+     *
+     * <p>Los avisos llegan solos a la campana; esto es donde se comprueba.
+     */
+    public Node settingsSystemStatusTab() {
+        Label sectionTitle = label(t("superv.section"), "settings-section-title");
+        Label hint = new Label(t("superv.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        TableView<com.benjagest.ui.model.JobStatusEntry> table = new TableView<>();
+        table.getStyleClass().add("data-table");
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPlaceholder(new Label(t("superv.empty")));
+
+        TableColumn<com.benjagest.ui.model.JobStatusEntry, String> colJob =
+                new TableColumn<>(t("superv.col.job"));
+        colJob.setCellValueFactory(c -> new SimpleStringProperty(jobLabel(c.getValue())));
+        colJob.setPrefWidth(230);
+
+        TableColumn<com.benjagest.ui.model.JobStatusEntry, String> colStatus =
+                new TableColumn<>(t("superv.col.status"));
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(jobStatusText(c.getValue())));
+        colStatus.setPrefWidth(190);
+        // Rojo para lo que ha fallado o lleva sin funcionar: es lo único que el
+        // usuario tiene que llegar a ver desde el otro lado de la habitación.
+        colStatus.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                setText(empty ? null : value);
+                var row = getTableRow() == null ? null : getTableRow().getItem();
+                boolean malo = row != null && isJobBad(row);
+                setStyle(empty || !malo ? "" : "-fx-text-fill: #c62828; -fx-font-weight: bold;");
+            }
+        });
+
+        TableColumn<com.benjagest.ui.model.JobStatusEntry, String> colLastRun =
+                new TableColumn<>(t("superv.col.last_run"));
+        colLastRun.setCellValueFactory(c -> new SimpleStringProperty(when(c.getValue().lastRunAt())));
+        colLastRun.setPrefWidth(160);
+
+        TableColumn<com.benjagest.ui.model.JobStatusEntry, String> colLastOk =
+                new TableColumn<>(t("superv.col.last_ok"));
+        colLastOk.setCellValueFactory(c -> new SimpleStringProperty(when(c.getValue().lastSuccessAt())));
+        colLastOk.setPrefWidth(160);
+
+        TableColumn<com.benjagest.ui.model.JobStatusEntry, String> colDetail =
+                new TableColumn<>(t("superv.col.detail"));
+        colDetail.setCellValueFactory(c -> new SimpleStringProperty(
+                c.getValue().lastMessage() == null ? "" : c.getValue().lastMessage()));
+        colDetail.setPrefWidth(320);
+
+        table.getColumns().addAll(List.of(colJob, colStatus, colLastRun, colLastOk, colDetail));
+        VBox.setVgrow(table, Priority.ALWAYS);
+
+        Button refresh = new Button(t("superv.btn.refresh"));
+        refresh.setGraphic(icon("fas-sync-alt"));
+        Runnable load = () -> loadJobStatuses(table);
+        refresh.setOnAction(ev -> load.run());
+
+        HBox controls = new HBox(10, refresh);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
+        load.run();
+
+        VBox layout = new VBox(12, sectionTitle, hint, controls, table);
+        layout.getStyleClass().add("settings-tab-body");
+        return layout;
+    }
+
+    /** El nombre traducido si lo hay; si no, el que manda el backend. */
+    private String jobLabel(com.benjagest.ui.model.JobStatusEntry e) {
+        String key = "superv.job." + e.jobName();
+        String translated = t(key);
+        return key.equals(translated) ? e.label() : translated;
+    }
+
+    /**
+     * Texto del resultado. Si la tarea vigila ausencias y lleva más días de la
+     * cuenta sin acertar, manda ESO sobre el último resultado: una tarea cuyo
+     * último intento fue "bien" hace tres semanas no está bien.
+     */
+    private String jobStatusText(com.benjagest.ui.model.JobStatusEntry e) {
+        long stale = daysSinceSuccess(e);
+        if (e.maxDaysWithoutSuccess() > 0 && stale >= e.maxDaysWithoutSuccess()) {
+            return t("superv.stale").replace("{n}", String.valueOf(stale));
+        }
+        String st = e.lastStatus();
+        if (st == null || st.isBlank()) return t("superv.status.none");
+        String key = "superv.status." + st;
+        String translated = t(key);
+        return key.equals(translated) ? st : translated;
+    }
+
+    private boolean isJobBad(com.benjagest.ui.model.JobStatusEntry e) {
+        if ("ERROR".equals(e.lastStatus())) return true;
+        long stale = daysSinceSuccess(e);
+        return e.maxDaysWithoutSuccess() > 0 && stale >= e.maxDaysWithoutSuccess();
+    }
+
+    /** Días desde el último acierto. -1 si nunca acertó (no se puede juzgar). */
+    private long daysSinceSuccess(com.benjagest.ui.model.JobStatusEntry e) {
+        java.time.LocalDateTime ok = parseStamp(e.lastSuccessAt());
+        if (ok == null) return -1;
+        return java.time.Duration.between(ok, java.time.LocalDateTime.now()).toDays();
+    }
+
+    private static java.time.LocalDateTime parseStamp(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalDateTime.parse(raw.replace(" ", "T"));
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    /** Fecha y hora legibles; "Nunca" si no hay. */
+    private String when(String raw) {
+        java.time.LocalDateTime d = parseStamp(raw);
+        if (d == null) return t("superv.never");
+        return d.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+    }
+
+    private void loadJobStatuses(TableView<com.benjagest.ui.model.JobStatusEntry> table) {
+        Task<List<com.benjagest.ui.model.JobStatusEntry>> task = new Task<>() {
+            @Override
+            protected List<com.benjagest.ui.model.JobStatusEntry> call() throws Exception {
+                return altaApiClient.listJobStatuses();
+            }
+        };
+        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnFailed(ev -> showError(t("superv.load.fail"),
+                task.getException() == null ? "" : task.getException().getMessage()));
+        start(task, "superv-jobs-load");
+    }
 
     public Node settingsBoeAlertsTab() {
         Label sectionTitle = label(t("settings.boe.section"), "settings-section-title");
