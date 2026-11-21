@@ -3311,6 +3311,9 @@ public final class I18n {
             case "update.service.unavailable" -> "The BENJAGEST service did not take the update. Check that it is running (services.msc), or install the .msi by hand.";
             case "update.service.timeout" -> "The service is taking too long to download. Try again later, or install the .msi by hand.";
             case "update.fail.title" -> "Could not update";
+            // SUPERV - antes un fallo de red se mostraba como "you are up to date".
+            case "update.unreachable.title" -> "Could not check for updates";
+            case "update.unreachable.body" -> "No answer from the update server, so there is no way to tell whether a newer version exists. This is NOT the same as being up to date: check your connection and try again.";
             case "settings.session.save" -> "Save session settings";
             case "settings.session.save.ok.title" -> "Saved";
             case "settings.session.save.ok.body" -> "Your session preferences have been updated.";
@@ -3662,6 +3665,10 @@ public final class I18n {
             case "update.service.unavailable" -> "El servicio de BENJAGEST no ha cogido la actualización. Comprueba que está arrancado (services.msc) o instala el .msi a mano.";
             case "update.service.timeout" -> "El servicio tarda demasiado en descargar. Vuelve a intentarlo más tarde o instala el .msi a mano.";
             case "update.fail.title" -> "No se pudo actualizar";
+            // SUPERV - antes un fallo de red se mostraba como "Estás al día",
+            // que es justo lo contrario de lo que pasaba.
+            case "update.unreachable.title" -> "No se pudo comprobar si hay actualizaciones";
+            case "update.unreachable.body" -> "El servidor de actualizaciones no ha respondido, así que no hay forma de saber si existe una versión más nueva. Esto NO es lo mismo que estar al día: revisa la conexión y vuelve a intentarlo.";
             case "settings.session.save" -> "Guardar configuración de sesión";
             case "settings.session.save.ok.title" -> "Guardado";
             case "settings.session.save.ok.body" -> "Tus preferencias de sesión se han actualizado.";
@@ -7072,6 +7079,29 @@ public final class I18n {
             case "settings.boe.load.fail" -> "Could not load BOE alerts";
             case "settings.boe.run.fail" -> "BOE scan failed";
             case "settings.tab.backup" -> "Backups";
+            // SUPERV (2026-11-21)
+            case "settings.tab.system" -> "System status";
+            case "superv.section" -> "Automatic tasks";
+            case "superv.hint" -> "What the app does on its own, and whether it is working. A task that stops working warns you in the bell; this screen is where you check it.";
+            case "superv.col.job" -> "Task";
+            case "superv.col.last_run" -> "Last run";
+            case "superv.col.status" -> "Result";
+            case "superv.col.last_ok" -> "Last success";
+            case "superv.col.detail" -> "Detail";
+            case "superv.status.OK" -> "Working";
+            case "superv.status.ERROR" -> "Failed";
+            case "superv.status.SKIPPED" -> "Nothing to do";
+            case "superv.status.none" -> "Never run";
+            case "superv.never" -> "Never";
+            case "superv.stale" -> "{n} days without working";
+            case "superv.no_absence_watch" -> "Only runs when you open the app";
+            case "superv.btn.refresh" -> "Refresh";
+            case "superv.empty" -> "No data yet";
+            case "superv.load.fail" -> "Could not load the status";
+            case "superv.job.backup" -> "Backup";
+            case "superv.job.contract-alerts" -> "Contract alerts";
+            case "superv.job.boe-alerts" -> "Official Gazette alerts";
+            case "superv.job.update-check" -> "Update check";
             case "settings.backup.section" -> "Local database backups";
             case "settings.backup.hint" -> "Automatic snapshot every Monday at 03:00. Includes a SQL dump and the invoice PDFs folder, zipped. The last 12 snapshots are kept and older ones are pruned.";
             case "settings.backup.empty" -> "No backups yet — click \"Run now\" to create the first one.";
@@ -8470,6 +8500,30 @@ public final class I18n {
             case "settings.boe.load.fail" -> "No se pudieron cargar las alertas BOE";
             case "settings.boe.run.fail" -> "Falló el barrido BOE";
             case "settings.tab.backup" -> "Copias de seguridad";
+            // SUPERV (2026-11-21) - Benjamin, tras el caso del BOE: la app
+            // estuvo 34 días rota sin que nadie se enterase.
+            case "settings.tab.system" -> "Estado del sistema";
+            case "superv.section" -> "Tareas automáticas";
+            case "superv.hint" -> "Lo que la aplicación hace sola, y si está funcionando. Cuando una tarea deja de funcionar te avisa en la campana; esta pantalla es donde lo compruebas.";
+            case "superv.col.job" -> "Tarea";
+            case "superv.col.last_run" -> "Última vez";
+            case "superv.col.status" -> "Resultado";
+            case "superv.col.last_ok" -> "Último acierto";
+            case "superv.col.detail" -> "Detalle";
+            case "superv.status.OK" -> "Funciona";
+            case "superv.status.ERROR" -> "Ha fallado";
+            case "superv.status.SKIPPED" -> "Nada que hacer";
+            case "superv.status.none" -> "Nunca ha corrido";
+            case "superv.never" -> "Nunca";
+            case "superv.stale" -> "{n} días sin funcionar";
+            case "superv.no_absence_watch" -> "Solo corre al abrir la aplicación";
+            case "superv.btn.refresh" -> "Actualizar";
+            case "superv.empty" -> "Todavía no hay datos";
+            case "superv.load.fail" -> "No se pudo cargar el estado";
+            case "superv.job.backup" -> "Copia de seguridad";
+            case "superv.job.contract-alerts" -> "Avisos de contratos";
+            case "superv.job.boe-alerts" -> "Alertas BOE";
+            case "superv.job.update-check" -> "Comprobación de actualizaciones";
             case "settings.backup.section" -> "Copias de seguridad locales";
             case "settings.backup.hint" -> "Snapshot automático cada lunes a las 03:00. Incluye volcado SQL y la carpeta de PDFs de facturas, comprimido. Se conservan las últimas 12 copias y las anteriores se eliminan.";
             case "settings.backup.empty" -> "Aún no hay copias — pulsa \"Hacer ahora\" para crear la primera.";

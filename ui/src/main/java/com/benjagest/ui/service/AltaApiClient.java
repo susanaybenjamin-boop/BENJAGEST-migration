@@ -3116,6 +3116,50 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  SUPERV — estado de las tareas automaticas
+    // ============================================================
+
+    /** Estado de cada tarea vigilada (Configuracion -> Estado del sistema). */
+    public List<com.benjagest.ui.model.JobStatusEntry> listJobStatuses()
+            throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/supervision/jobs").GET());
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        List<com.benjagest.ui.model.JobStatusEntry> out = new ArrayList<>();
+        for (String obj : splitTopLevelObjects(r.body())) {
+            if (!obj.contains("\"jobName\"")) continue;
+            out.add(new com.benjagest.ui.model.JobStatusEntry(
+                    textField(obj, "jobName"),
+                    textField(obj, "label"),
+                    textField(obj, "lastRunAt"),
+                    textField(obj, "lastStatus"),
+                    textField(obj, "lastSuccessAt"),
+                    textField(obj, "lastMessage"),
+                    intFieldOrZero(obj, "maxDaysWithoutSuccess")));
+        }
+        return out;
+    }
+
+    /**
+     * Reporta el resultado de una tarea que ejecuta la UI (hoy solo la
+     * comprobacion de actualizaciones, que va contra GitHub desde el cliente).
+     */
+    public void reportJobRun(String jobName, String status, String message)
+            throws IOException, InterruptedException {
+        String body = "{\"jobName\":" + jsonString(jobName)
+                + ",\"status\":" + jsonString(status)
+                + ",\"message\":" + jsonString(message) + "}";
+        HttpResponse<String> r = send(req(baseUrl + "/supervision/report")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        body, java.nio.charset.StandardCharsets.UTF_8)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+    }
+
+    // ============================================================
     //  BOE-FILTRO — preferencias de avisos del BOE
     // ============================================================
 
