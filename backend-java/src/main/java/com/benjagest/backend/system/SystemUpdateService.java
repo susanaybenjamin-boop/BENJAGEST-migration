@@ -76,10 +76,24 @@ public class SystemUpdateService {
     private final AtomicReference<Status> status =
             new AtomicReference<>(new Status(State.IDLE, 0, 0, null));
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    private final HttpClient http = buildHttpClient();
+
+    /**
+     * TLS (2026-11-21) — confia en el almacen de Java Y en el de Windows.
+     * Es ADITIVO: lo que ya validaba sigue validando igual, solo se anade un
+     * segundo intento si el primero rechaza. Ver {@code WindowsAwareTrust} y el
+     * caso del BOE, que estuvo 34 dias caido por una raiz que no venia en el
+     * cacerts de Java.
+     */
+    private static HttpClient buildHttpClient() {
+        HttpClient.Builder b = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL);
+        javax.net.ssl.SSLContext ctx =
+                com.benjagest.backend.config.WindowsAwareTrust.sslContextOrNull();
+        if (ctx != null) b.sslContext(ctx);
+        return b.build();
+    }
 
     public Status status() {
         return status.get();

@@ -58,19 +58,40 @@ public final class WindowsAwareTrust {
      */
     public static SSLContext sslContextOrNull() {
         try {
+            TrustManager[] tms = trustManagersOrNull();
+            if (tms == null) return null;
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(null, tms, null);
+            return ctx;
+        } catch (Exception ex) {
+            log.warn("TLS: no se pudo montar el contexto con el almacen de Windows; "
+                    + "se usara el de Java", ex);
+            return null;
+        }
+    }
+
+    /**
+     * Los {@code TrustManager} sueltos, para quien ya monta su propio
+     * {@link SSLContext} por otro motivo y solo necesita la parte de
+     * confianza.
+     *
+     * <p>El caso es el cliente de AEAT: necesita sus propios
+     * {@code KeyManager} (el certificado de la empresa, que es como AEAT la
+     * identifica), asi que no puede usar un contexto ya montado. Devolver
+     * {@code null} es seguro: {@code SSLContext.init} con trust managers nulos
+     * usa el almacen por defecto de la JVM.
+     */
+    public static TrustManager[] trustManagersOrNull() {
+        try {
             List<X509TrustManager> delegates = new ArrayList<>();
             X509TrustManager def = load(null);
             if (def != null) delegates.add(def);
             X509TrustManager win = windows();
             if (win != null) delegates.add(win);
             if (delegates.isEmpty()) return null;
-
-            SSLContext ctx = SSLContext.getInstance("TLS");
-            ctx.init(null, new TrustManager[] { new AnyOf(delegates) }, null);
-            return ctx;
+            return new TrustManager[] { new AnyOf(delegates) };
         } catch (Exception ex) {
-            log.warn("TLS: no se pudo montar el contexto con el almacen de Windows; "
-                    + "se usara el de Java", ex);
+            log.warn("TLS: no se pudieron montar los trust managers", ex);
             return null;
         }
     }

@@ -169,15 +169,25 @@ public class AeatVerifactuClient {
         kmf.init(ks, password);
 
         SSLContext ctx = SSLContext.getInstance("TLSv1.3");
-        // TrustManager permisivo provisional. TODO VF3-FINAL: usar el
-        // TrustManager por defecto (CAs del sistema) — AEAT sirve con
-        // CA publica, no hace falta truststore custom.
-        TrustManager[] trustAll = new TrustManager[] { new X509TrustManager() {
-            public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-            public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-            public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-        }};
-        ctx.init(kmf.getKeyManagers(), trustAll, new java.security.SecureRandom());
+        // TLS-AEAT (2026-11-21) — RESUELTO el TODO de VF3-FINAL, y era mas
+        // grave de lo que parecia: aqui habia un TrustManager PERMISIVO cuyo
+        // checkServerTrusted estaba vacio, o sea que la app aceptaba cualquier
+        // certificado. Al activarse el envio real estaria mandando facturas
+        // firmadas con el certificado de la empresa a cualquier servidor que
+        // se presentase como AEAT, sin comprobarlo: justo lo que el TLS existe
+        // para impedir.
+        //
+        // Ahora se valida de verdad, contra el almacen de Java Y el de Windows
+        // (ver WindowsAwareTrust). Lo segundo importa especialmente aqui: AEAT
+        // es una sede del Estado igual que el BOE, que el 18-oct-2026 renovo a
+        // una cadena de la FNMT-RCM cuya raiz NO viene en el cacerts de Java y
+        // dejo el barrido del BOE 34 dias caido en silencio.
+        //
+        // Si no se pudieran montar, null significa "usa el almacen por defecto
+        // de la JVM": peor que con Windows, pero nunca permisivo.
+        ctx.init(kmf.getKeyManagers(),
+                com.benjagest.backend.config.WindowsAwareTrust.trustManagersOrNull(),
+                new java.security.SecureRandom());
         return ctx;
     }
 
