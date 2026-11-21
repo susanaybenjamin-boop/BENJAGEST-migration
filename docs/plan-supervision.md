@@ -1,6 +1,8 @@
 # SUPERV — Qué vigila la app, qué falla en silencio y dónde poner la vigilancia
 
-> **Estado: ANÁLISIS. No se ha tocado código.** Escrito el 2026-11-21 a
+> **Estado: ANÁLISIS — ✅ PRIMER BLOQUE IMPLEMENTADO el mismo día.** Benjamin eligió los cuatro puntos de esfuerzo bajo de §5.2 (backup, contratos, BOE y actualizador) y están hechos: tablas `job_runs` + `job_supervision` (V184), avisos en la transición a fallo, por ausencia y de recuperación, y la pantalla Configuración → Estado del sistema. **Decisiones 2, 3 y 4 de §6 resueltas así**: avisos a la campana (en estos cuatro casos la app está corriendo, así que llega); 2 días sin éxito para las diarias y 10 para el backup semanal; y el arreglo de certificados **no** se llevó a los otros clientes HTTP — sigue pendiente, AEAT el primero. **Hallazgo extra al implementar**: el actualizador devolvía lo mismo para "estás al día" que para "no se pudo preguntar", así que con la red caída te decía que tenías la última versión. Arreglado.
+>
+> Escrito el 2026-11-21 a
 > petición de Benjamin: *"lo vamos a montar, pero no antes de analizar la app
 > y ver en qué puntos lo vamos a poner a que supervise"*.
 >
