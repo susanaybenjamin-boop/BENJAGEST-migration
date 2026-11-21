@@ -3116,6 +3116,110 @@ public class AltaApiClient {
     }
 
     // ============================================================
+    //  SIM — simulador fiscal comparativo
+    // ============================================================
+
+    /** Una compra prevista que se manda a simular. */
+    public record SimLinePayload(String concept, java.math.BigDecimal baseAmount,
+                                 java.math.BigDecimal vatRate,
+                                 java.math.BigDecimal vatDeductiblePct,
+                                 boolean irpfDeductible) {}
+
+    /**
+     * Compara lo que el cliente pagaria hoy con lo que pagaria si hiciera esas
+     * compras. No guarda nada: es una calculadora.
+     *
+     * <p>La respuesta lleva objetos ANIDADOS (las dos columnas), asi que los
+     * escenarios se recortan por nombre y se parsean aparte — el regex plano de
+     * `parseObjects` devolveria [] en silencio (CLAUDE.md §6).
+     */
+    public com.benjagest.ui.model.TaxSimulationResult simulateTaxes(
+            int year, int quarter, java.util.List<SimLinePayload> lines)
+            throws IOException, InterruptedException {
+        StringBuilder b = new StringBuilder();
+        b.append("{\"year\":").append(year).append(",\"quarter\":").append(quarter);
+        b.append(",\"lines\":[");
+        for (int i = 0; i < lines.size(); i++) {
+            SimLinePayload l = lines.get(i);
+            if (i > 0) b.append(',');
+            b.append("{\"concept\":").append(jsonString(l.concept()))
+             .append(",\"baseAmount\":").append(num(l.baseAmount()))
+             .append(",\"vatRate\":").append(num(l.vatRate()))
+             .append(",\"vatDeductiblePct\":").append(num(l.vatDeductiblePct()))
+             .append(",\"irpfDeductible\":").append(l.irpfDeductible())
+             .append('}');
+        }
+        b.append("]}");
+
+        HttpResponse<String> r = send(req(baseUrl + "/aeat/simulation")
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        b.toString(), java.nio.charset.StandardCharsets.UTF_8)));
+        if (r.statusCode() < 200 || r.statusCode() >= 300) {
+            throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
+        }
+        String j = r.body();
+        return new com.benjagest.ui.model.TaxSimulationResult(
+                intFieldOrZero(j, "year"),
+                intFieldOrZero(j, "quarter"),
+                textField(j, "regime"),
+                boolField(j, "expensesReduceIrpf"),
+                scenario(objectField(j, "real")),
+                scenario(objectField(j, "simulated")),
+                decFieldOrZero(j, "extraSpend"),
+                decFieldOrZero(j, "saving"),
+                decFieldOrZero(j, "netCost"),
+                decFieldOrZero(j, "ceilingBase"),
+                decFieldOrZero(j, "ceilingSaving"),
+                stringArrayField(j, "warnings"));
+    }
+
+    private com.benjagest.ui.model.TaxSimulationResult.Scenario scenario(String obj) {
+        return new com.benjagest.ui.model.TaxSimulationResult.Scenario(
+                decFieldOrZero(obj, "income"),
+                decFieldOrZero(obj, "expenses"),
+                decFieldOrZero(obj, "profit"),
+                decFieldOrZero(obj, "model303"),
+                decFieldOrZero(obj, "model130"),
+                decFieldOrZero(obj, "totalToPay"));
+    }
+
+    /**
+     * Recorta el sub-objeto {@code "campo":{ ... }} balanceando llaves, para no
+     * cortar en la primera que aparezca dentro de una cadena.
+     */
+    private String objectField(String json, String field) {
+        if (json == null) return "";
+        int k = json.indexOf("\"" + field + "\"");
+        if (k < 0) return "";
+        int open = json.indexOf('{', k);
+        if (open < 0) return "";
+        int depth = 0;
+        boolean inStr = false;
+        boolean esc = false;
+        for (int i = open; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (esc) { esc = false; continue; }
+            if (inStr) {
+                if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            if (c == '"') inStr = true;
+            else if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return json.substring(open, i + 1);
+            }
+        }
+        return "";
+    }
+
+    private static String num(java.math.BigDecimal v) {
+        return v == null ? "null" : v.toPlainString();
+    }
+
+    // ============================================================
     //  SUPERV — estado de las tareas automaticas
     // ============================================================
 

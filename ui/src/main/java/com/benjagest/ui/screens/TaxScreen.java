@@ -115,11 +115,281 @@ public class TaxScreen extends ScreenBase {
         filingsTab.setGraphic(icon("fas-file-alt"));
         Tab calendarTab = new Tab(t("tax.tab.calendar"), buildCalendarTab(bundle));
         calendarTab.setGraphic(icon("fas-calendar-alt"));
-        tabs.getTabs().addAll(filingsTab, calendarTab);
+        // SIM — el simulador va junto al 303 y el 130 porque es la misma
+        // conversacion: "esto es lo que vas a pagar" / "esto es lo que podrias
+        // pagar". El modulo Fiscal no se le muestra al empresario, asi que la
+        // herramienta queda en la asesoria por construccion.
+        Tab simTab = new Tab(t("tax.tab.simulator"), buildSimulatorTab());
+        simTab.setGraphic(icon("fas-balance-scale"));
+        tabs.getTabs().addAll(filingsTab, calendarTab, simTab);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
         content.getChildren().addAll(header, tabs);
         return content;
+    }
+
+    // ====================================================================
+    //  SIM — simulador comparativo contra la realidad
+    // ====================================================================
+
+    /** Una fila de la tabla de compras previstas. Editable en sitio. */
+    public static final class SimRow {
+        private final StringProperty concept = new SimpleStringProperty("");
+        private final StringProperty base = new SimpleStringProperty("");
+        private final StringProperty vat = new SimpleStringProperty("21");
+        private final StringProperty vatDed = new SimpleStringProperty("100");
+        private final BooleanProperty irpf = new SimpleBooleanProperty(true);
+
+        SimRow(String c, String v, String vd, boolean irpfDed) {
+            concept.set(c); vat.set(v); vatDed.set(vd); irpf.set(irpfDed);
+        }
+
+        public StringProperty conceptProperty() { return concept; }
+        public StringProperty baseProperty() { return base; }
+        public StringProperty vatProperty() { return vat; }
+        public StringProperty vatDedProperty() { return vatDed; }
+        public BooleanProperty irpfProperty() { return irpf; }
+    }
+
+    /**
+     * Celda de texto que vuelca el valor al modelo cuando el editor pierde el
+     * foco, ademas de con Enter.
+     *
+     * <p><b>El problema</b>, visto en vivo en el smoke: escribes 3.000 en una
+     * linea y pulsas "Comparar" sin darle antes a Enter. JavaFX cancela la
+     * edicion y el importe se pierde EN SILENCIO: la simulacion responde como
+     * si esa compra no existiera. En una herramienta que aconseja sobre dinero,
+     * una cifra equivocada sin aviso es peor que un error.
+     *
+     * <p><b>Dos intentos que NO valieron</b>, y por que, para que no se repitan:
+     * <ol>
+     *   <li>{@code commitEdit()} al perder el foco: no llega a ejecutarse,
+     *       porque la tabla ya ha cancelado la edicion y {@code isEditing()} es
+     *       false para cuando salta el evento.</li>
+     *   <li>Escribir al modelo en CADA tecla: refresca la celda y devuelve el
+     *       cursor al principio, asi que "3000" se tecleaba como "0003". Un
+     *       arreglo peor que el fallo.</li>
+     * </ol>
+     *
+     * <p>Lo que si funciona: escribir al modelo <b>una sola vez</b>, cuando el
+     * campo pierde el foco, sin pasar por el mecanismo de confirmacion de la
+     * tabla y sin tocar nada mientras se teclea.
+     */
+    private static javafx.util.Callback<TableColumn<SimRow, String>, TableCell<SimRow, String>>
+            flushOnFocusLoss(java.util.function.BiConsumer<SimRow, String> writer) {
+        return col -> new TextFieldTableCell<SimRow, String>(
+                new javafx.util.converter.DefaultStringConverter()) {
+            private boolean wired = false;
+
+            @Override
+            public void startEdit() {
+                super.startEdit();
+                if (!wired && getGraphic() instanceof TextField tf) {
+                    // Se engancha UNA vez: el editor se reutiliza entre ediciones.
+                    wired = true;
+                    tf.focusedProperty().addListener((o, tenia, tiene) -> {
+                        if (!tenia || tiene) return;
+                        TableRow<SimRow> row = getTableRow();
+                        if (row != null && row.getItem() != null) {
+                            writer.accept(row.getItem(), tf.getText());
+                        }
+                    });
+                }
+            }
+        };
+    }
+
+    private TableView<SimRow> simTable;
+    private VBox simResultBox;
+    private ComboBox<Integer> simQuarter;
+
+    /**
+     * Simulador comparativo. Peticion de Benjamin (2026-11-21): poder ensenarle
+     * al cliente hasta cuanto puede gastar para bajar los pagos del trimestre
+     * sin entrar en perdidas.
+     *
+     * <p>La tabla viene con tres lineas de ejemplo <b>con el importe en
+     * blanco</b>: dan el formato y el tipo de IVA ya puesto (incluido el
+     * vehiculo al 50%, que es el que mas se hace mal a mano) pero no inventan
+     * cifras. Las filas sin importe se ignoran al simular.
+     */
+    private Node buildSimulatorTab() {
+        Label hint = new Label(t("sim.hint"));
+        hint.setWrapText(true);
+        hint.getStyleClass().add("settings-hint");
+
+        simQuarter = new ComboBox<>();
+        simQuarter.getItems().addAll(1, 2, 3, 4);
+        simQuarter.getSelectionModel().select(Integer.valueOf(currentQuarter()));
+        simQuarter.setPrefWidth(90);
+
+        Button simulate = new Button(t("sim.action.simulate"));
+        simulate.setGraphic(icon("fas-balance-scale"));
+        simulate.getStyleClass().add("primary-button");
+        simulate.setOnAction(ev -> runSimulation());
+
+        Button addRow = new Button(t("sim.action.add_line"));
+        addRow.setGraphic(icon("fas-plus"));
+        addRow.setOnAction(ev -> simTable.getItems().add(new SimRow("", "21", "100", true)));
+
+        Button removeRow = new Button(t("sim.action.remove_line"));
+        removeRow.setOnAction(ev -> {
+            SimRow sel = simTable.getSelectionModel().getSelectedItem();
+            if (sel != null) simTable.getItems().remove(sel);
+        });
+
+        HBox controls = new HBox(8,
+                new Label(t("sim.quarter") + ":"), simQuarter,
+                simulate, addRow, removeRow);
+        controls.setAlignment(Pos.CENTER_LEFT);
+
+        simTable = new TableView<>();
+        simTable.getStyleClass().add("data-table");
+        simTable.setEditable(true);
+        simTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        simTable.setPrefHeight(190);
+
+        TableColumn<SimRow, String> cConcept = new TableColumn<>(t("sim.col.concept"));
+        cConcept.setCellValueFactory(c -> c.getValue().conceptProperty());
+        cConcept.setCellFactory(flushOnFocusLoss((r, v) -> r.conceptProperty().set(v)));
+        cConcept.setOnEditCommit(e -> e.getRowValue().conceptProperty().set(e.getNewValue()));
+        cConcept.setPrefWidth(240);
+
+        TableColumn<SimRow, String> cBase = new TableColumn<>(t("sim.col.base"));
+        cBase.setCellValueFactory(c -> c.getValue().baseProperty());
+        cBase.setCellFactory(flushOnFocusLoss((r, v) -> r.baseProperty().set(v)));
+        cBase.setOnEditCommit(e -> e.getRowValue().baseProperty().set(e.getNewValue()));
+        cBase.setPrefWidth(120);
+
+        TableColumn<SimRow, String> cVat = new TableColumn<>(t("sim.col.vat"));
+        cVat.setCellValueFactory(c -> c.getValue().vatProperty());
+        cVat.setCellFactory(flushOnFocusLoss((r, v) -> r.vatProperty().set(v)));
+        cVat.setOnEditCommit(e -> e.getRowValue().vatProperty().set(e.getNewValue()));
+        cVat.setPrefWidth(90);
+
+        TableColumn<SimRow, String> cVatDed = new TableColumn<>(t("sim.col.vat_deductible"));
+        cVatDed.setCellValueFactory(c -> c.getValue().vatDedProperty());
+        cVatDed.setCellFactory(flushOnFocusLoss((r, v) -> r.vatDedProperty().set(v)));
+        cVatDed.setOnEditCommit(e -> e.getRowValue().vatDedProperty().set(e.getNewValue()));
+        cVatDed.setPrefWidth(120);
+
+        TableColumn<SimRow, Boolean> cIrpf = new TableColumn<>(t("sim.col.irpf"));
+        cIrpf.setCellValueFactory(c -> c.getValue().irpfProperty());
+        cIrpf.setCellFactory(CheckBoxTableCell.forTableColumn(cIrpf));
+        cIrpf.setEditable(true);
+        cIrpf.setPrefWidth(110);
+
+        simTable.getColumns().addAll(List.of(cConcept, cBase, cVat, cVatDed, cIrpf));
+        // Lineas de ejemplo SIN importe: formato y tipo de IVA ya puestos, pero
+        // ninguna cifra inventada. El vehiculo trae el 50% porque es el caso
+        // que mas se equivoca a mano.
+        simTable.setItems(FXCollections.observableArrayList(
+                new SimRow(t("sim.example.computer"), "21", "100", true),
+                new SimRow(t("sim.example.furniture"), "21", "100", true),
+                new SimRow(t("sim.example.vehicle"), "21", "50", false)));
+
+        simResultBox = new VBox(12);
+        simResultBox.getChildren().add(placeholderLabel(t("sim.placeholder")));
+
+        VBox box = new VBox(12, hint, controls, simTable, new Separator(), simResultBox);
+        box.setPadding(new Insets(8));
+        return box;
+    }
+
+    private Label placeholderLabel(String text) {
+        Label l = new Label(text);
+        l.getStyleClass().add("settings-hint");
+        l.setWrapText(true);
+        return l;
+    }
+
+    private static int currentQuarter() {
+        return (LocalDate.now().getMonthValue() - 1) / 3 + 1;
+    }
+
+    private void runSimulation() {
+        List<AltaApiClient.SimLinePayload> lines = new ArrayList<>();
+        for (SimRow r : simTable.getItems()) {
+            java.math.BigDecimal base = parseAmount(r.baseProperty().get());
+            if (base == null || base.signum() <= 0) continue;  // filas de ejemplo vacias
+            lines.add(new AltaApiClient.SimLinePayload(
+                    r.conceptProperty().get(), base,
+                    orZero(parseAmount(r.vatProperty().get())),
+                    orZero(parseAmount(r.vatDedProperty().get())),
+                    r.irpfProperty().get()));
+        }
+        int q = simQuarter.getValue() == null ? currentQuarter() : simQuarter.getValue();
+        simResultBox.getChildren().setAll(placeholderLabel(t("sim.running")));
+        Task<com.benjagest.ui.model.TaxSimulationResult> task = new Task<>() {
+            @Override
+            protected com.benjagest.ui.model.TaxSimulationResult call() throws Exception {
+                return altaApiClient.simulateTaxes(year, q, lines);
+            }
+        };
+        task.setOnSucceeded(ev -> renderSimulation(task.getValue()));
+        task.setOnFailed(ev -> {
+            simResultBox.getChildren().setAll(placeholderLabel(t("sim.failed")));
+            showError(t("sim.failed"),
+                    task.getException() == null ? "" : task.getException().getMessage());
+        });
+        start(task, "tax-simulation");
+    }
+
+    /** Acepta "3.000,50" y "3000.50": el asesor escribe como le sale. */
+    private static java.math.BigDecimal parseAmount(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String v = raw.trim().replace(" ", "").replace("%", "").replace("€", "");
+        if (v.contains(",")) v = v.replace(".", "").replace(",", ".");
+        try {
+            return new java.math.BigDecimal(v);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static java.math.BigDecimal orZero(java.math.BigDecimal v) {
+        return v == null ? java.math.BigDecimal.ZERO : v;
+    }
+
+    private void renderSimulation(com.benjagest.ui.model.TaxSimulationResult r) {
+        if (r == null) return;
+        List<Node> out = new ArrayList<>();
+
+        for (String w : r.warnings()) {
+            Label warn = new Label(t(w));
+            warn.setWrapText(true);
+            warn.setStyle("-fx-text-fill: #b8860b;");
+            out.add(warn);
+        }
+
+        FlowPane cards = new FlowPane(14, 14);
+        cards.getChildren().addAll(
+                UiBuilders.kpiCard(t("sim.card.real"), money(r.real().totalToPay()),
+                        t("sim.card.breakdown")
+                                .replace("{303}", money(r.real().model303()))
+                                .replace("{130}", money(r.real().model130())),
+                        "#6e6e6e"),
+                UiBuilders.kpiCard(t("sim.card.simulated"), money(r.simulated().totalToPay()),
+                        t("sim.card.breakdown")
+                                .replace("{303}", money(r.simulated().model303()))
+                                .replace("{130}", money(r.simulated().model130())),
+                        r.saving().signum() > 0 ? "#2e7d32" : "#6e6e6e"),
+                UiBuilders.kpiCard(t("sim.card.spend"), money(r.extraSpend()), null, "#1565c0"),
+                UiBuilders.kpiCard(t("sim.card.saving"), money(r.saving()), null, "#2e7d32"),
+                // La tarjeta que impide que esto empuje a gastar por gastar.
+                UiBuilders.kpiCard(t("sim.card.net_cost"), money(r.netCost()),
+                        t("sim.card.net_cost.detail"), "#c62828"));
+        out.add(cards);
+
+        if (r.expensesReduceIrpf()) {
+            Label ceiling = new Label(t("sim.ceiling")
+                    .replace("{max}", money(r.ceilingBase()))
+                    .replace("{saving}", money(r.ceilingSaving())));
+            ceiling.setWrapText(true);
+            ceiling.setStyle("-fx-text-fill: #b8860b;");
+            out.add(ceiling);
+        }
+        simResultBox.getChildren().setAll(out);
     }
 
     private Node buildFilingsTab(TaxBundle bundle) {
