@@ -7110,6 +7110,13 @@ public final class I18n {
             case "settings.boe.btn.run_now" -> "Scan now";
             // BOE-FILTRO (2026-11-20)
             case "settings.boe.btn.prefs" -> "Choose what I get";
+            // BOE-BUSCAR (2026-11-22)
+            case "settings.boe.search" -> "Search";
+            case "settings.boe.search.prompt" -> "Words in the title, ministry or ID";
+            case "settings.boe.search.from" -> "From";
+            case "settings.boe.search.to" -> "To";
+            case "settings.boe.search.clear" -> "Clear";
+            case "settings.boe.search.count" -> "Showing {n} of {total}";
             case "settings.boe.prefs.title" -> "Official Gazette alerts";
             case "settings.boe.prefs.header" -> "Pick what reaches your inbox. The three filters are combined: section AND ministry AND keyword.";
             case "settings.boe.prefs.enabled" -> "Receive Official Gazette alerts";
@@ -8531,6 +8538,15 @@ public final class I18n {
             // llena de noticias que no interesan, tendríamos que poder escoger
             // qué queremos que nos llegue".
             case "settings.boe.btn.prefs" -> "Elegir qué recibo";
+            // BOE-BUSCAR (2026-11-22) - Benjamin: "¿podrías añadir un filtro
+            // ahí, para buscar por palabras, fechas...?". Con un año de avisos
+            // cargados la lista es inmanejable.
+            case "settings.boe.search" -> "Buscar";
+            case "settings.boe.search.prompt" -> "Palabras del título, ministerio o identificador";
+            case "settings.boe.search.from" -> "Desde";
+            case "settings.boe.search.to" -> "Hasta";
+            case "settings.boe.search.clear" -> "Limpiar";
+            case "settings.boe.search.count" -> "Viendo {n} de {total}";
             case "settings.boe.prefs.title" -> "Avisos del BOE";
             case "settings.boe.prefs.header" -> "Elige qué quieres que te llegue. Los tres filtros se suman: sección Y ministerio Y palabra.";
             case "settings.boe.prefs.enabled" -> "Recibir avisos del BOE";
