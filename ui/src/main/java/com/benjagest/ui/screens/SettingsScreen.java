@@ -2384,6 +2384,23 @@ public class SettingsScreen extends ScreenBase {
                 new TableColumn<>(t("settings.boe.col.title"));
         colTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
         colTitle.setPrefWidth(420);
+        // BOE-ACENTOS — los titulos del BOE son larguisimos y la columna los
+        // cortaba con "...", asi que no habia forma de leer de que iba la norma
+        // sin abrir el PDF. Con el raton encima se ve entero.
+        colTitle.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                setText(empty ? null : value);
+                if (empty || value == null || value.isBlank()) {
+                    setTooltip(null);
+                } else {
+                    Tooltip tip = new Tooltip(value);
+                    tip.setWrapText(true);
+                    tip.setMaxWidth(640);
+                    setTooltip(tip);
+                }
+            }
+        });
 
         TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colKw =
                 new TableColumn<>(t("settings.boe.col.keywords"));

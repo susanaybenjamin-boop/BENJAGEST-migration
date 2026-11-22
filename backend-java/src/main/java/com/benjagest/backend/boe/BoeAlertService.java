@@ -374,6 +374,46 @@ public class BoeAlertService {
         }
     }
 
+    /**
+     * BOE-ACENTOS (2026-11-22) — descodifica los {@code \\uXXXX} que quedaron
+     * guardados en los avisos VIEJOS.
+     *
+     * <p>Benjamin: <i>"sigue sin colocarse bien los acentos, comas o ñ"</i>. Y
+     * tenia razon, pero no era el parser de ahora: el ANTERIOR desescapaba a
+     * mano y solo conocia la comilla, el salto de linea y la barra — nunca
+     * {@code \\uXXXX}. Los avisos guardados antes de la v0.1.76 llevan en la BD
+     * literales como {@code Resoluci\\u00f3n} y asi se pintan para siempre. Se ve
+     * clarisimo en su pantalla: las filas del 20-nov (parser nuevo, Jackson)
+     * salen con sus tildes y las de octubre no.
+     *
+     * <p>Se arregla al LEER y no con una migracion que reescriba las filas: es
+     * una tabla de solo lectura para mostrar, el riesgo de tocar datos
+     * historicos no compensa, y asi tambien quedan bien los avisos que
+     * importase alguien desde otra instalacion.
+     *
+     * <p>Solo toca secuencias {@code \\uXXXX} bien formadas; cualquier otra cosa
+     * se deja tal cual.
+     */
+    static String decodeEscapes(String s) {
+        if (s == null || s.indexOf("\\u") < 0) return s;
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 5 < s.length() && s.charAt(i + 1) == 'u') {
+                String hex = s.substring(i + 2, i + 6);
+                try {
+                    out.append((char) Integer.parseInt(hex, 16));
+                    i += 5;
+                    continue;
+                } catch (NumberFormatException ignored) {
+                    // No era un escape de verdad: se copia tal cual.
+                }
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
     private static String truncate(String s, int max) {
         if (s == null) return null;
         return s.length() <= max ? s : s.substring(0, max - 1);
@@ -420,9 +460,9 @@ public class BoeAlertService {
                         rs.getString("id"),
                         rs.getDate("alert_date").toLocalDate().toString(),
                         rs.getString("boe_id"),
-                        rs.getString("title"),
-                        rs.getString("url"),
-                        rs.getString("department"),
+                        decodeEscapes(rs.getString("title")),
+                        decodeEscapes(rs.getString("url")),
+                        decodeEscapes(rs.getString("department")),
                         rs.getString("keywords_matched"),
                         rs.getString("section_name"),
                         rs.getTimestamp("created_at").toInstant().toString()),

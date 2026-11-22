@@ -304,6 +304,51 @@ class BoeFiltroTest {
                 "el BOE no publica los domingos: 2 dias se queda corto");
     }
 
+    // ====================================================================
+    //  Acentos de los avisos viejos (BOE-ACENTOS, 2026-11-22)
+    // ====================================================================
+
+    /** Una barra invertida, montada a mano: ver la nota de abajo. */
+    private static final String BS = String.valueOf((char) 92);
+
+    /**
+     * Benjamin: <i>"sigue sin colocarse bien los acentos, comas o n"</i>.
+     *
+     * <p>No era el parser de ahora: el ANTERIOR desescapaba a mano y solo
+     * conocia la comilla, el salto de linea y la barra, nunca los escapes
+     * unicode. Los avisos guardados antes de la v0.1.76 llevan en la BD
+     * literales como "Resoluci" + barra + "u00f3n". Se veia clarisimo en su
+     * pantalla: las filas del 20-nov (parser nuevo) con sus tildes y las de
+     * octubre sin ellas.
+     *
+     * <p>Las cadenas de prueba se montan concatenando {@link #BS} a proposito:
+     * Java descodifica los escapes unicode del CODIGO FUENTE antes de
+     * compilar, asi que escribirlos dentro de una cadena literal da un
+     * resultado distinto del que uno cree estar escribiendo.
+     */
+    @Test
+    void losAvisosViejosRecuperanSusTildes() {
+        assertEquals("Resolución de 2 de octubre",
+                BoeAlertService.decodeEscapes("Resoluci" + BS + "u00f3n de 2 de octubre"));
+        assertEquals("España", BoeAlertService.decodeEscapes("Espa" + BS + "u00f1a"));
+        assertEquals("Ejército", BoeAlertService.decodeEscapes("Ej" + BS + "u00e9rcito"));
+    }
+
+    @Test
+    void unTituloYaCorrectoSeQuedaIgual() {
+        String bueno = "Real Decreto 1013/2026, por el que se fija el salario mínimo";
+        assertEquals(bueno, BoeAlertService.decodeEscapes(bueno));
+        assertNull(BoeAlertService.decodeEscapes(null));
+    }
+
+    /** Lo que no es un escape de verdad no puede romper nada. */
+    @Test
+    void loQueNoEsUnEscapeDeVerdadSeDejaTalCual() {
+        assertEquals(BS + "uZZZZ", BoeAlertService.decodeEscapes(BS + "uZZZZ"));
+        assertEquals(BS + "u00", BoeAlertService.decodeEscapes(BS + "u00"));
+        assertEquals("sin escapes", BoeAlertService.decodeEscapes("sin escapes"));
+    }
+
     private static BoeItem buscar(String id) {
         return items.stream().filter(i -> i.id().equals(id)).findFirst()
                 .orElseThrow(() -> new AssertionError("no esta en el fixture: " + id));
