@@ -37,8 +37,14 @@ public enum SupervisedJob {
     /**
      * Barrido diario del BOE. El caso que originó todo esto: 34 días caído
      * (18-oct a 20-nov de 2026) sin que nadie lo supiera.
+     *
+     * <p>Umbral <b>3</b> y no 2: el BOE publica de lunes a sábado, así que un
+     * domingo ya deja un día sin éxito, y con el equipo apagado un lunes se
+     * llegaría a dos sin que pase nada malo. Para el caso real que motivó esto
+     * — 34 días — da exactamente igual 2 que 3, y a cambio se quitan avisos
+     * falsos, que es lo que hace que los de verdad se lean.
      */
-    BOE_ALERTS("boe-alerts", "Alertas BOE", 2),
+    BOE_ALERTS("boe-alerts", "Alertas BOE", 3),
 
     /**
      * Comprobación de si hay una versión nueva. La ejecuta la UI al arrancar,

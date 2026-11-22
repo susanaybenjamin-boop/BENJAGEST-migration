@@ -2369,6 +2369,18 @@ public class SettingsScreen extends ScreenBase {
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label(t("settings.boe.empty")));
 
+        // BOE-BUSCAR (2026-11-22, peticion de Benjamin: "podrias anadir un
+        // filtro ahi, para buscar por palabras, fechas..."). Con un ano de
+        // avisos cargados la lista es inmanejable. El filtrado es LOCAL sobre
+        // lo ya descargado: responde al instante y no hace falta tocar el
+        // backend ni esperar a una consulta por cada letra que se teclea.
+        boeMaster = FXCollections.observableArrayList();
+        boeFiltered = new javafx.collections.transformation.FilteredList<>(boeMaster, x -> true);
+        javafx.collections.transformation.SortedList<com.benjagest.ui.model.BoeAlertEntry> sorted =
+                new javafx.collections.transformation.SortedList<>(boeFiltered);
+        sorted.comparatorProperty().bind(table.comparatorProperty());
+        table.setItems(sorted);
+
         TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colDate =
                 new TableColumn<>(t("settings.boe.col.date"));
         colDate.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().alertDate()));
@@ -2384,6 +2396,23 @@ public class SettingsScreen extends ScreenBase {
                 new TableColumn<>(t("settings.boe.col.title"));
         colTitle.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().title()));
         colTitle.setPrefWidth(420);
+        // BOE-ACENTOS — los titulos del BOE son larguisimos y la columna los
+        // cortaba con "...", asi que no habia forma de leer de que iba la norma
+        // sin abrir el PDF. Con el raton encima se ve entero.
+        colTitle.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                setText(empty ? null : value);
+                if (empty || value == null || value.isBlank()) {
+                    setTooltip(null);
+                } else {
+                    Tooltip tip = new Tooltip(value);
+                    tip.setWrapText(true);
+                    tip.setMaxWidth(640);
+                    setTooltip(tip);
+                }
+            }
+        });
 
         TableColumn<com.benjagest.ui.model.BoeAlertEntry, String> colKw =
                 new TableColumn<>(t("settings.boe.col.keywords"));
@@ -2434,9 +2463,39 @@ public class SettingsScreen extends ScreenBase {
                 daysCombo, refresh, runNow, openPdf);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
+        // --- BOE-BUSCAR: segunda fila, la de buscar sobre lo ya cargado ---
+        boeSearch = new TextField();
+        boeSearch.setPromptText(t("settings.boe.search.prompt"));
+        boeSearch.setPrefWidth(320);
+        boeFrom = new DatePicker();
+        boeFrom.setPrefWidth(140);
+        boeTo = new DatePicker();
+        boeTo.setPrefWidth(140);
+        boeCount = new Label();
+        boeCount.getStyleClass().add("settings-hint");
+
+        Button clear = new Button(t("settings.boe.search.clear"));
+        clear.setOnAction(ev -> {
+            boeSearch.clear();
+            boeFrom.setValue(null);
+            boeTo.setValue(null);
+        });
+
+        Runnable applyFilter = this::applyBoeFilter;
+        boeSearch.textProperty().addListener((o, a, b) -> applyFilter.run());
+        boeFrom.valueProperty().addListener((o, a, b) -> applyFilter.run());
+        boeTo.valueProperty().addListener((o, a, b) -> applyFilter.run());
+
+        HBox searchRow = new HBox(10,
+                label(t("settings.boe.search"), "form-label"), boeSearch,
+                label(t("settings.boe.search.from"), "form-label"), boeFrom,
+                label(t("settings.boe.search.to"), "form-label"), boeTo,
+                clear, boeCount);
+        searchRow.setAlignment(Pos.CENTER_LEFT);
+
         load.run();
 
-        VBox layout = new VBox(12, sectionTitle, hint, filterRow, table);
+        VBox layout = new VBox(12, sectionTitle, hint, filterRow, searchRow, table);
         layout.getStyleClass().add("settings-tab-body");
         return layout;
     }
@@ -2673,6 +2732,81 @@ public class SettingsScreen extends ScreenBase {
         dialog.showAndWait();
     }
 
+    // --- BOE-BUSCAR: estado del buscador del listado de alertas ---
+    private javafx.collections.ObservableList<com.benjagest.ui.model.BoeAlertEntry> boeMaster;
+    private javafx.collections.transformation.FilteredList<com.benjagest.ui.model.BoeAlertEntry> boeFiltered;
+    private TextField boeSearch;
+    private DatePicker boeFrom;
+    private DatePicker boeTo;
+    private Label boeCount;
+
+    /**
+     * Filtra por TEXTO y por RANGO DE FECHAS sobre lo ya descargado.
+     *
+     * <p>El texto se busca en titulo, identificador, palabras clave y
+     * ministerio, <b>sin mirar tildes ni mayusculas</b>: escribir "resolucion"
+     * tiene que encontrar "Resolución", porque nadie teclea las tildes al
+     * buscar. Varias palabras separadas por espacio se exigen TODAS, que es lo
+     * que uno espera al afinar una busqueda.
+     */
+    private void applyBoeFilter() {
+        if (boeFiltered == null) return;
+        String raw = boeSearch == null || boeSearch.getText() == null ? "" : boeSearch.getText().trim();
+        String[] terms = raw.isEmpty() ? new String[0] : normalizeForSearch(raw).split("\\s+");
+        java.time.LocalDate from = boeFrom == null ? null : boeFrom.getValue();
+        java.time.LocalDate to = boeTo == null ? null : boeTo.getValue();
+
+        boeFiltered.setPredicate(e -> {
+            if (e == null) return false;
+            if (from != null || to != null) {
+                java.time.LocalDate d = parseIsoDate(e.alertDate());
+                // Un aviso sin fecha legible no se esconde al filtrar por
+                // fechas: esconderlo seria perder algo sin decirlo.
+                if (d != null) {
+                    if (from != null && d.isBefore(from)) return false;
+                    if (to != null && d.isAfter(to)) return false;
+                }
+            }
+            if (terms.length == 0) return true;
+            String hay = normalizeForSearch(
+                    nz(e.title()) + " " + nz(e.boeId()) + " "
+                    + nz(e.keywordsMatched()) + " " + nz(e.department()));
+            for (String term : terms) {
+                if (!hay.contains(term)) return false;
+            }
+            return true;
+        });
+
+        if (boeCount != null) {
+            boeCount.setText(t("settings.boe.search.count")
+                    .replace("{n}", String.valueOf(boeFiltered.size()))
+                    .replace("{total}", String.valueOf(boeMaster == null ? 0 : boeMaster.size())));
+        }
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    /** Minusculas y sin tildes, para que la busqueda no dependa de como se teclee. */
+    private static String normalizeForSearch(String s) {
+        if (s == null) return "";
+        String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
+        StringBuilder sb = new StringBuilder(n.length());
+        for (int i = 0; i < n.length(); i++) {
+            char c = n.charAt(i);
+            if (Character.getType(c) != Character.NON_SPACING_MARK) sb.append(c);
+        }
+        return sb.toString().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static java.time.LocalDate parseIsoDate(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(raw.substring(0, Math.min(10, raw.length())));
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
     private void loadBoeAlerts(TableView<com.benjagest.ui.model.BoeAlertEntry> table, Integer days) {
         int d = days == null ? 30 : days;
         Task<List<com.benjagest.ui.model.BoeAlertEntry>> task = new Task<>() {
@@ -2681,7 +2815,13 @@ public class SettingsScreen extends ScreenBase {
                 return altaApiClient.listBoeAlerts(d);
             }
         };
-        task.setOnSucceeded(ev -> table.setItems(FXCollections.observableArrayList(task.getValue())));
+        task.setOnSucceeded(ev -> {
+            // BOE-BUSCAR: se vuelca en la lista MAESTRA; la tabla ensena la
+            // filtrada. Asi recargar no se come lo que el usuario tenga escrito
+            // en el buscador.
+            boeMaster.setAll(task.getValue());
+            applyBoeFilter();
+        });
         task.setOnFailed(ev -> showError(t("settings.boe.load.fail"),
                 task.getException() == null ? "" : task.getException().getMessage()));
         start(task, "boe-alerts-load");
