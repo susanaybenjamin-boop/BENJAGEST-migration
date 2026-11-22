@@ -42,6 +42,12 @@ import org.slf4j.LoggerFactory;
  * <p>No se baja la seguridad: no hay {@code TrustManager} permisivo ni se
  * acepta nada sin validar. Si ninguno de los dos almacenes valida la cadena,
  * la conexión se rechaza igual que antes.
+ *
+ * <p><b>Tiene una gemela</b> en el módulo del UI
+ * ({@code com.benjagest.ui.service.WindowsAwareTrust}, UPD-TLS 2026-11-22),
+ * porque {@code ui} no depende de {@code backend-java} y el actualizador
+ * también necesita esto. El contenido es idéntico salvo el paquete y que allí
+ * no hay slf4j: <b>si se toca una, hay que tocar la otra</b>.
  */
 public final class WindowsAwareTrust {
 
