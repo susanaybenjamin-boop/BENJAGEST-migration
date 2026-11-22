@@ -7086,16 +7086,29 @@ public final class I18n {
             case "panorama.subtitle" -> "Cross-client KPIs of all your managed companies.";
             case "panorama.loading" -> "Loading…";
             case "panorama.fail" -> "Could not load portfolio KPIs.";
-            case "panorama.billed" -> "Billed this month";
+            case "panorama.billed" -> "Billed";
             case "panorama.billed.sub" -> "Sum of validated invoices";
             case "panorama.pending" -> "Pending collection";
-            case "panorama.pending.sub" -> "Across all clients";
+            case "panorama.pending.sub" -> "Outstanding as of today";
             case "panorama.overdue" -> "Overdue invoices";
-            case "panorama.overdue.sub" -> "Past due date";
+            case "panorama.overdue.sub" -> "Past due as of today";
             case "panorama.active_clients" -> "Active clients";
-            case "panorama.active_clients.sub" -> "Invoiced this month";
+            case "panorama.active_clients.sub" -> "Invoiced in the period";
             case "panorama.tpb_pending" -> "TPB awaiting approval";
             case "panorama.tpb_pending.sub" -> "Client must accept/reject";
+            // CARTERA-FILTRO — the filter row above the tiles.
+            case "panorama.filter.client" -> "Client:";
+            case "panorama.filter.all" -> "All clients";
+            case "panorama.filter.period" -> "Period:";
+            // The PERIOD VALUES: the backend sends these codes and the UI paints
+            // them with t("panorama.period." + code). Miss one and the raw code
+            // shows up on screen.
+            case "panorama.period.CURRENT_MONTH" -> "This month";
+            case "panorama.period.PREVIOUS_MONTH" -> "Last month";
+            case "panorama.period.CURRENT_QUARTER" -> "This quarter";
+            case "panorama.period.PREVIOUS_QUARTER" -> "Last quarter";
+            case "panorama.period.CURRENT_YEAR" -> "This year";
+            case "panorama.period.PREVIOUS_YEAR" -> "Last year";
             case "settings.tab.boe_alerts" -> "BOE alerts";
             case "settings.boe.section" -> "BOE alerts — fiscal & labor";
             case "settings.boe.hint" -> "Daily scan of the Spanish Official Gazette. Each match below is also sent as a notification. Use \"Choose what I get\" to pick the sections, ministries and keywords you care about.";
@@ -8512,16 +8525,29 @@ public final class I18n {
             case "panorama.subtitle" -> "KPIs cruzados de todas tus empresas gestionadas.";
             case "panorama.loading" -> "Cargando…";
             case "panorama.fail" -> "No se pudieron cargar los KPIs de cartera.";
-            case "panorama.billed" -> "Facturado este mes";
+            case "panorama.billed" -> "Facturado";
             case "panorama.billed.sub" -> "Suma de facturas validadas";
             case "panorama.pending" -> "Pendiente de cobro";
-            case "panorama.pending.sub" -> "Total entre todos los clientes";
+            case "panorama.pending.sub" -> "Saldo vivo a día de hoy";
             case "panorama.overdue" -> "Facturas vencidas";
-            case "panorama.overdue.sub" -> "Pasadas de vencimiento";
+            case "panorama.overdue.sub" -> "Vencidas a día de hoy";
             case "panorama.active_clients" -> "Clientes activos";
-            case "panorama.active_clients.sub" -> "Han facturado este mes";
+            case "panorama.active_clients.sub" -> "Han facturado en el periodo";
             case "panorama.tpb_pending" -> "TPB pendientes aceptación";
             case "panorama.tpb_pending.sub" -> "Cliente debe aceptar/rechazar";
+            // CARTERA-FILTRO — la fila de filtros encima de las tarjetas.
+            case "panorama.filter.client" -> "Cliente:";
+            case "panorama.filter.all" -> "Todos los clientes";
+            case "panorama.filter.period" -> "Periodo:";
+            // Los VALORES del periodo: la UI los pinta con
+            // t("panorama.period." + código). Si falta uno, en pantalla sale el
+            // código crudo.
+            case "panorama.period.CURRENT_MONTH" -> "Este mes";
+            case "panorama.period.PREVIOUS_MONTH" -> "Mes anterior";
+            case "panorama.period.CURRENT_QUARTER" -> "Este trimestre";
+            case "panorama.period.PREVIOUS_QUARTER" -> "Trimestre anterior";
+            case "panorama.period.CURRENT_YEAR" -> "Este año";
+            case "panorama.period.PREVIOUS_YEAR" -> "Año anterior";
             case "settings.tab.boe_alerts" -> "Alertas BOE";
             case "settings.boe.section" -> "Alertas BOE — fiscal y laboral";
             case "settings.boe.hint" -> "Barrido diario del Boletín Oficial del Estado. Cada coincidencia de abajo se envía además como aviso. Con \"Elegir qué recibo\" decides las secciones, los ministerios y las palabras que te interesan.";

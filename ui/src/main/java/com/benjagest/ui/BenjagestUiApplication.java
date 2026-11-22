@@ -2877,11 +2877,9 @@ public class BenjagestUiApplication extends Application
         }
         // PANORAMA-ASESORIA — bloque KPIs cartera solo en modo asesoría.
         if (appMode == AppMode.ADVISORY && !hidden.contains("panorama")) {
-            VBox panoramaSlot = new VBox();
             content.getChildren().addAll(
                     sectionHeader(t("panorama.title"), t("panorama.subtitle")),
-                    panoramaSlot);
-            loadPortfolioFinancials(panoramaSlot);
+                    buildPortfolioBlock());
         }
         if (!hidden.contains("quick")) {
             content.getChildren().addAll(
@@ -2953,8 +2951,99 @@ public class BenjagestUiApplication extends Application
         dialog.showAndWait();
     }
 
+    /**
+     * CARTERA-FILTRO (2026-11-22) — el bloque "Mi cartera" con sus dos
+     * selectores ENCIMA de los indicadores (patron Slice 3V: los controles
+     * arriba, nunca debajo de lo que filtran).
+     *
+     * <p>Peticion de Benjamin: el bloque sumaba siempre el mes en curso de TODA
+     * la cartera y no habia forma de mirar un cliente suelto.
+     *
+     * <p>Los selectores se construyen UNA vez y viven fuera del hueco que se
+     * repinta, porque {@code loadPortfolioFinancials} lo vacia entero en cada
+     * carga: si estuvieran dentro, cambiar el periodo borraria el propio combo
+     * que acabas de tocar.
+     */
+    private javafx.scene.Node buildPortfolioBlock() {
+        VBox slot = new VBox();
+
+        // --- cliente ---
+        ComboBox<PortfolioClientChoice> clientCombo = new ComboBox<>();
+        clientCombo.getStyleClass().add("form-input");
+        clientCombo.setPrefWidth(280);
+        PortfolioClientChoice todos = new PortfolioClientChoice(null, t("panorama.filter.all"));
+        clientCombo.getItems().add(todos);
+        clientCombo.setValue(todos);
+        clientCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(PortfolioClientChoice c) {
+                return c == null ? "" : c.label();
+            }
+            @Override public PortfolioClientChoice fromString(String s) { return null; }
+        });
+
+        // --- periodo ---
+        ComboBox<String> periodCombo = new ComboBox<>();
+        periodCombo.getStyleClass().add("form-input");
+        periodCombo.setPrefWidth(200);
+        periodCombo.getItems().addAll("CURRENT_MONTH", "PREVIOUS_MONTH",
+                "CURRENT_QUARTER", "PREVIOUS_QUARTER", "CURRENT_YEAR", "PREVIOUS_YEAR");
+        periodCombo.setValue("CURRENT_MONTH");
+        periodCombo.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(String code) {
+                return code == null ? "" : t("panorama.period." + code);
+            }
+            @Override public String fromString(String s) { return null; }
+        });
+
+        Runnable reload = () -> {
+            PortfolioClientChoice c = clientCombo.getValue();
+            loadPortfolioFinancials(slot, c == null ? null : c.id(), periodCombo.getValue());
+        };
+        clientCombo.setOnAction(ev -> reload.run());
+        periodCombo.setOnAction(ev -> reload.run());
+
+        HBox filters = new HBox(10,
+                label(t("panorama.filter.client"), "form-label"), clientCombo,
+                label(t("panorama.filter.period"), "form-label"), periodCombo);
+        filters.setAlignment(Pos.CENTER_LEFT);
+
+        // Auto-refresh: validar o cobrar una factura cambia estos numeros, y el
+        // usuario no tiene que pulsar nada para verlo (regla del proyecto).
+        com.benjagest.ui.support.RefreshBus.subscribe(
+                com.benjagest.ui.support.RefreshBus.TOPIC_SALES, reload, slot);
+
+        loadPortfolioClients(clientCombo);
+        reload.run();
+        return new VBox(10, filters, slot);
+    }
+
+    /** Una opcion del selector de cliente; {@code id} null = toda la cartera. */
+    private record PortfolioClientChoice(String id, String label) {}
+
+    /**
+     * Rellena el selector con las empresas gestionadas. Si falla, el combo se
+     * queda solo con "Todos los clientes": se pierde el filtro, no el bloque.
+     */
+    private void loadPortfolioClients(ComboBox<PortfolioClientChoice> combo) {
+        Task<java.util.List<com.benjagest.ui.model.ManagedClientEntry>> task = new Task<>() {
+            @Override
+            protected java.util.List<com.benjagest.ui.model.ManagedClientEntry> call()
+                    throws Exception {
+                return altaApiClient.listManagedClients();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            for (var c : task.getValue()) {
+                String name = (c.tradeName() == null || c.tradeName().isBlank())
+                        ? c.legalName() : c.tradeName();
+                combo.getItems().add(new PortfolioClientChoice(c.id(), name));
+            }
+        });
+        start(task, "portfolio-clients");
+    }
+
     /** PANORAMA-ASESORIA — Carga KPIs cartera y los pinta como tiles. */
-    private void loadPortfolioFinancials(VBox slot) {
+    private void loadPortfolioFinancials(VBox slot, String companyId, String period) {
         slot.getChildren().clear();
         Label loading = new Label(t("panorama.loading"));
         loading.getStyleClass().add("settings-hint");
@@ -2962,7 +3051,7 @@ public class BenjagestUiApplication extends Application
         Task<com.benjagest.ui.model.PortfolioFinancialsEntry> task = new Task<>() {
             @Override
             protected com.benjagest.ui.model.PortfolioFinancialsEntry call() throws Exception {
-                return altaApiClient.getPortfolioFinancials();
+                return altaApiClient.getPortfolioFinancials(companyId, period);
             }
         };
         task.setOnSucceeded(ev -> {
@@ -2974,13 +3063,13 @@ public class BenjagestUiApplication extends Application
             tiles.setPrefTileWidth(218);
             tiles.setPrefTileHeight(110);
             tiles.getChildren().addAll(
-                    metric(t("panorama.billed"), money(String.valueOf(p.billedThisMonth())),
+                    metric(t("panorama.billed"), money(String.valueOf(p.billed())),
                             t("panorama.billed.sub"), "fas-euro-sign", "metric-green"),
                     metric(t("panorama.pending"), money(String.valueOf(p.pendingPayment())),
                             t("panorama.pending.sub"), "fas-hourglass-half", "metric-amber"),
                     metric(t("panorama.overdue"), String.valueOf(p.overdueInvoices()),
                             t("panorama.overdue.sub"), "fas-exclamation-triangle", "module-red"),
-                    metric(t("panorama.active_clients"), String.valueOf(p.activeClientsThisMonth()),
+                    metric(t("panorama.active_clients"), String.valueOf(p.activeClients()),
                             t("panorama.active_clients.sub"), "fas-users", "module-teal"),
                     metric(t("panorama.tpb_pending"), String.valueOf(p.pendingTpbApprovals()),
                             t("panorama.tpb_pending.sub"), "fas-file-signature", "module-violet")

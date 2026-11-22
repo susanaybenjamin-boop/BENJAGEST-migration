@@ -62,16 +62,46 @@ public class AdvisoryDashboardService {
      * parent_company_id = la asesoría).
      */
     public PortfolioFinancials portfolioFinancials() {
+        return portfolioFinancials(null, PortfolioPeriod.DEFAULT);
+    }
+
+    /**
+     * CARTERA-FILTRO (2026-11-22) — los mismos KPIs, pudiendo acotar a UN
+     * cliente y a un periodo distinto del mes en curso.
+     *
+     * <p><b>Seguridad.</b> {@code companyId} llega de fuera, así que no se usa
+     * a secas: todas las consultas siguen pasando por
+     * {@code JOIN companies c ... WHERE c.parent_company_id = advisoryId}, y el
+     * filtro se añade ENCIMA. Pedir el id de una empresa de otra asesoría no
+     * devuelve sus números, devuelve cero — el JOIN la descarta antes.
+     *
+     * <p><b>El periodo solo afecta a dos indicadores</b> (lo facturado y
+     * cuántos clientes facturaron). Los otros tres son fotos de hoy; el porqué
+     * está en {@link PortfolioPeriod}.
+     *
+     * @param companyId cliente al que acotar, o {@code null} para toda la cartera
+     * @param period    periodo de las métricas con fecha; {@code null} = mes en curso
+     */
+    public PortfolioFinancials portfolioFinancials(String companyId, PortfolioPeriod period) {
         String advisoryId = tenant.getCurrentCompanyId();
-        // Total facturado este mes (suma de totals de facturas VALIDATED).
+        PortfolioPeriod p = period == null ? PortfolioPeriod.DEFAULT : period;
+        LocalDate today = LocalDate.now();
+        LocalDate desde = p.from(today);
+        LocalDate hasta = p.toExclusive(today);
+        // Vacio -> null, para que el "(? IS NULL OR ...)" de las consultas
+        // signifique "toda la cartera". Un combo puede mandar la cadena vacia.
+        String soloCliente = (companyId == null || companyId.isBlank()) ? null : companyId;
+        // Facturado en el periodo (suma de totals de facturas VALIDATED, IVA incluido).
         java.math.BigDecimal billed = bigDecimalOrZero("""
                 SELECT COALESCE(SUM(si.total), 0)
                   FROM sales_invoices si
                   JOIN companies c ON c.id = si.company_id
                  WHERE c.parent_company_id = ?
                    AND si.status = 'VALIDATED'
-                   AND si.invoice_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
-                """, advisoryId);
+                   AND si.invoice_date >= ?
+                   AND si.invoice_date < ?
+                   AND (? IS NULL OR si.company_id = ?)
+                """, advisoryId, desde, hasta, soloCliente, soloCliente);
         // Pendiente cobro: total - paid_amount donde payment_status != PAID.
         // Se excluyen rectificativas que anulan una original ya VOIDED (el par
         // netea a cero; dejar solo la negativa restaba de mas). Ver
@@ -86,7 +116,8 @@ public class AdvisoryDashboardService {
                    AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
                             SELECT 1 FROM sales_invoices o
                              WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
-                """, advisoryId);
+                   AND (? IS NULL OR si.company_id = ?)
+                """, advisoryId, soloCliente, soloCliente);
         // Facturas vencidas (due_date < today, no pagadas).
         Integer overdueCount = countOrZero("""
                 SELECT COUNT(*)
@@ -100,23 +131,27 @@ public class AdvisoryDashboardService {
                    AND NOT (si.original_invoice_id IS NOT NULL AND EXISTS (
                             SELECT 1 FROM sales_invoices o
                              WHERE o.id = si.original_invoice_id AND o.status = 'VOIDED'))
-                """, advisoryId);
-        // Clientes activos con al menos 1 factura este mes.
+                   AND (? IS NULL OR si.company_id = ?)
+                """, advisoryId, soloCliente, soloCliente);
+        // Clientes con al menos 1 factura en el periodo.
         Integer activeClients = countOrZero("""
                 SELECT COUNT(DISTINCT si.company_id)
                   FROM sales_invoices si
                   JOIN companies c ON c.id = si.company_id
                  WHERE c.parent_company_id = ?
                    AND si.status = 'VALIDATED'
-                   AND si.invoice_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')
-                """, advisoryId);
+                   AND si.invoice_date >= ?
+                   AND si.invoice_date < ?
+                   AND (? IS NULL OR si.company_id = ?)
+                """, advisoryId, desde, hasta, soloCliente, soloCliente);
         // Pendientes de aprobación TPB-3
         Integer pendingApprovals = countOrZero("""
                 SELECT COUNT(*) FROM sales_invoices si
                   JOIN companies c ON c.id = si.company_id
                  WHERE c.parent_company_id = ?
                    AND si.status = 'PENDING_CLIENT_APPROVAL'
-                """, advisoryId);
+                   AND (? IS NULL OR si.company_id = ?)
+                """, advisoryId, soloCliente, soloCliente);
         return new PortfolioFinancials(billed, pending, overdueCount,
                 activeClients, pendingApprovals);
     }
@@ -131,11 +166,23 @@ public class AdvisoryDashboardService {
         }
     }
 
+    /**
+     * CARTERA-FILTRO — antes estos dos campos se llamaban
+     * {@code billedThisMonth} y {@code activeClientsThisMonth}. Desde que el
+     * periodo se puede elegir, ese nombre mentiria en cuanto alguien mirase un
+     * trimestre o un ano.
+     *
+     * @param billed        facturado (IVA incluido) en el periodo elegido
+     * @param pendingPayment pendiente de cobro HOY, no del periodo
+     * @param overdueInvoices facturas vencidas HOY, no del periodo
+     * @param activeClients clientes que facturaron algo en el periodo
+     * @param pendingTpbApprovals facturas esperando el visto bueno del cliente, HOY
+     */
     public record PortfolioFinancials(
-            java.math.BigDecimal billedThisMonth,
+            java.math.BigDecimal billed,
             java.math.BigDecimal pendingPayment,
             int overdueInvoices,
-            int activeClientsThisMonth,
+            int activeClients,
             int pendingTpbApprovals
     ) {}
 
@@ -321,9 +368,21 @@ public class AdvisoryDashboardService {
             return service.snapshot();
         }
 
+        /**
+         * CARTERA-FILTRO — los dos parametros son opcionales: sin ellos
+         * responde exactamente lo de antes (toda la cartera, mes en curso),
+         * asi que nada de lo que ya llamaba a este endpoint cambia.
+         */
         @GetMapping("/portfolio-financials")
-        public PortfolioFinancials portfolioFinancials() {
-            return service.portfolioFinancials();
+        public PortfolioFinancials portfolioFinancials(
+                // El nombre va EXPLICITO: este modulo no se compila con
+                // -parameters, asi que sin el Spring no sabe como se llama el
+                // parametro y responde 500 en ejecucion (compila igual).
+                @org.springframework.web.bind.annotation.RequestParam(
+                        name = "companyId", required = false) String companyId,
+                @org.springframework.web.bind.annotation.RequestParam(
+                        name = "period", required = false) String period) {
+            return service.portfolioFinancials(companyId, PortfolioPeriod.parse(period));
         }
     }
 }
