@@ -59,12 +59,36 @@ public class UpdateService {
         return root.resolve("updates").resolve("update-done.marker");
     }
 
-    // followRedirects: las descargas de assets de GitHub responden 302 hacia un
-    // CDN; sin esto la descarga del .msi fallaría.
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    private final HttpClient http = buildHttpClient();
+
+    /**
+     * UPD-TLS (2026-11-22) — este era el <b>ultimo</b> cliente HTTP de toda la
+     * aplicacion que validaba solo contra el {@code cacerts} de Java. Los siete
+     * del backend se arreglaron en la v0.1.78; este se quedo fuera porque el
+     * modulo {@code ui} no depende de {@code backend-java}.
+     *
+     * <p>El caso que lo justifica no es que GitHub cambie de autoridad
+     * certificadora, sino un <b>antivirus o un proxy de empresa</b> que
+     * inspeccione el trafico TLS: su autoridad se instala en el almacen de
+     * Windows y nunca en el de Java, asi que todo seguiria funcionando menos la
+     * comprobacion de actualizaciones — en silencio, como el BOE 34 dias.
+     *
+     * <p>Es ADITIVO: lo que el almacen de Java ya validaba sigue validando
+     * igual, solo se anade un segundo intento si el primero rechaza. Si no se
+     * pudiera montar, {@code null} = almacen por defecto de la JVM: nunca
+     * permisivo. Ver {@link WindowsAwareTrust}.
+     *
+     * <p>followRedirects: las descargas de assets de GitHub responden 302 hacia
+     * un CDN; sin esto la descarga del .msi fallaria.
+     */
+    private static HttpClient buildHttpClient() {
+        HttpClient.Builder b = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.NORMAL);
+        javax.net.ssl.SSLContext ctx = WindowsAwareTrust.sslContextOrNull();
+        if (ctx != null) b.sslContext(ctx);
+        return b.build();
+    }
 
     public record UpdateInfo(String latestVersion, String downloadUrl) {}
 
