@@ -2,6 +2,8 @@ package com.benjagest.backend.boe;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.benjagest.backend.boe.BoeMatcher.BoeItem;
@@ -245,6 +247,61 @@ class BoeFiltroTest {
         assertEquals(kws, BoeAlertPrefs.parseList(BoeAlertPrefs.joinList(kws), List.of()));
         List<String> secs = List.of("1", "3");
         assertEquals(secs, BoeAlertPrefs.parseList(BoeAlertPrefs.joinSections(secs), List.of()));
+    }
+
+    // ====================================================================
+    //  Dias sin boletin (BOE-DOMINGO, 2026-11-22)
+    // ====================================================================
+
+    /**
+     * El BOE publica de <b>lunes a sabado</b>: los domingos su API responde
+     * 404. Eso NO es un fallo.
+     *
+     * <p>Se vio en produccion el primer domingo con la supervision puesta: la
+     * pantalla "Estado del sistema" marcaba <i>"Alertas BOE — Ha fallado —
+     * Sin boletin"</i> en rojo. El motivo viajaba dentro del campo
+     * {@code error} del resultado y el supervisor lo tomaba por un fallo, asi
+     * que la app habria dado un aviso falso <b>todos los domingos</b> — justo
+     * el ruido que la supervision existe para evitar.
+     */
+    @Test
+    void unDiaSinBoletinNoEsUnFallo() {
+        BoeAlertService.RunSummary r =
+                BoeAlertService.RunSummary.noBulletin("2026-11-22");
+
+        assertTrue(r.noBulletin(), "hay que poder distinguirlo");
+        assertNull(r.error(), "y NO puede viajar como error: eso lo pintaba en rojo");
+        assertEquals(0, r.totalArticles());
+    }
+
+    @Test
+    void unFalloDeVerdadSiLlevaMotivo() {
+        BoeAlertService.RunSummary r =
+                BoeAlertService.RunSummary.failed("2026-11-23", 0, 0, "PKIX path building failed");
+
+        assertFalse(r.noBulletin());
+        assertNotNull(r.error());
+    }
+
+    /** Cero avisos no es un fallo: es el filtro haciendo su trabajo. */
+    @Test
+    void unDiaConBoletinYSinAvisosEsExito() {
+        BoeAlertService.RunSummary r = BoeAlertService.RunSummary.ok("2026-11-21", 0, 0, 283);
+
+        assertFalse(r.noBulletin());
+        assertNull(r.error());
+        assertEquals(283, r.totalArticles());
+    }
+
+    /**
+     * El umbral de ausencia tiene que absorber un domingo. Con 2 dias, un
+     * domingo mas un lunes con el equipo apagado ya disparaba un aviso falso.
+     */
+    @Test
+    void elUmbralDelBoeAbsorbeUnDomingo() {
+        assertTrue(com.benjagest.backend.supervision.SupervisedJob.BOE_ALERTS
+                        .maxDaysWithoutSuccess() >= 3,
+                "el BOE no publica los domingos: 2 dias se queda corto");
     }
 
     private static BoeItem buscar(String id) {

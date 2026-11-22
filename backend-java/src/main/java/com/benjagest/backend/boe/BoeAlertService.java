@@ -133,12 +133,27 @@ public class BoeAlertService {
         }
     }
 
+    /**
+     * Tres resultados posibles, y distinguirlos importa:
+     * <ul>
+     *   <li><b>SKIPPED</b> — ese dia no hubo boletin. El BOE publica de lunes a
+     *       sabado, asi que <b>todos los domingos</b> la API responde 404. No es
+     *       un fallo y no puede pintarse en rojo: un aviso falso cada semana es
+     *       la forma de que se dejen de leer los de verdad.</li>
+     *   <li><b>ERROR</b> — se intento y fallo (red, certificado, formato).</li>
+     *   <li><b>OK</b> — se leyo el boletin, con o sin avisos. Cero avisos NO es
+     *       un fallo: es el filtro haciendo su trabajo.</li>
+     * </ul>
+     */
     private void superviseRun(RunSummary r, long ms) {
-        if (r != null && r.error() != null && !r.error().isBlank()) {
+        if (r == null) {
+            supervise("ERROR", "Sin resultado", ms);
+        } else if (r.noBulletin()) {
+            supervise("SKIPPED", "Sin boletin ese dia (el BOE no publica los domingos)", ms);
+        } else if (r.error() != null && !r.error().isBlank()) {
             supervise("ERROR", r.error(), ms);
         } else {
-            supervise("OK", r == null ? null
-                    : r.totalArticles() + " articulos, " + r.hits() + " avisos", ms);
+            supervise("OK", r.totalArticles() + " articulos, " + r.hits() + " avisos", ms);
         }
     }
 
@@ -159,7 +174,7 @@ public class BoeAlertService {
             List<BoeItem> items = fetchItems(date);
             if (items.isEmpty()) {
                 log.info("BOE-RSS: no hay boletín para {} (o venía vacío)", date);
-                return new RunSummary(date.toString(), 0, 0, 0, "Sin boletín");
+                return RunSummary.noBulletin(date.toString());
             }
 
             // Un aviso puede interesarle a varias asesorías. Se guarda UNA fila
@@ -182,10 +197,10 @@ public class BoeAlertService {
             }
             log.info("BOE-RSS: fecha {} → {} articulos, {} avisos ({} nuevos)",
                     date, items.size(), hits, newInserts);
-            return new RunSummary(date.toString(), hits, newInserts, items.size(), null);
+            return RunSummary.ok(date.toString(), hits, newInserts, items.size());
         } catch (Exception ex) {
             log.warn("BOE-RSS: error para {}", date, ex);
-            return new RunSummary(date.toString(), hits, newInserts, 0, ex.getMessage());
+            return RunSummary.failed(date.toString(), hits, newInserts, ex.getMessage());
         }
     }
 
@@ -364,8 +379,31 @@ public class BoeAlertService {
         return s.length() <= max ? s : s.substring(0, max - 1);
     }
 
+    /**
+     * @param error      motivo del fallo, o null si fue bien
+     * @param noBulletin el BOE no publico ese dia. <b>NO es un fallo</b>: el
+     *                   BOE sale de lunes a sabado, asi que todos los domingos
+     *                   la API responde 404. Antes esto viajaba dentro de
+     *                   {@code error} y el supervisor lo marcaba como "Ha
+     *                   fallado", o sea un falso aviso cada domingo — justo el
+     *                   ruido que la supervision existe para evitar.
+     */
     public record RunSummary(String date, int hits, int newInserts,
-                             int totalArticles, String error) {}
+                             int totalArticles, String error, boolean noBulletin) {
+
+        /** Dia sin boletin: ni exito ni fallo. */
+        static RunSummary noBulletin(String date) {
+            return new RunSummary(date, 0, 0, 0, null, true);
+        }
+
+        static RunSummary ok(String date, int hits, int newInserts, int totalArticles) {
+            return new RunSummary(date, hits, newInserts, totalArticles, null, false);
+        }
+
+        static RunSummary failed(String date, int hits, int newInserts, String error) {
+            return new RunSummary(date, hits, newInserts, 0, error, false);
+        }
+    }
 
     // ====================================================================
     //  Listado
