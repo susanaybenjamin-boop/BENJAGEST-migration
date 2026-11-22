@@ -2873,18 +2873,44 @@ public class AltaApiClient {
 
     public com.benjagest.ui.model.PortfolioFinancialsEntry getPortfolioFinancials()
             throws IOException, InterruptedException {
-        HttpResponse<String> r = send(req(
-                baseUrl + "/advisory/dashboard/portfolio-financials").GET());
+        return getPortfolioFinancials(null, null);
+    }
+
+    /**
+     * CARTERA-FILTRO (2026-11-22) — los mismos KPIs acotados a un cliente y a
+     * un periodo. Los dos parametros son opcionales: sin ninguno responde lo de
+     * siempre (toda la cartera, mes en curso).
+     *
+     * @param companyId empresa gestionada, o null para toda la cartera
+     * @param period    CURRENT_MONTH, PREVIOUS_QUARTER... o null para el mes en curso
+     */
+    public com.benjagest.ui.model.PortfolioFinancialsEntry getPortfolioFinancials(
+            String companyId, String period) throws IOException, InterruptedException {
+        StringBuilder url =
+                new StringBuilder(baseUrl + "/advisory/dashboard/portfolio-financials");
+        char sep = '?';
+        if (companyId != null && !companyId.isBlank()) {
+            url.append(sep).append("companyId=").append(urlParam(companyId));
+            sep = '&';
+        }
+        if (period != null && !period.isBlank()) {
+            url.append(sep).append("period=").append(urlParam(period));
+        }
+        HttpResponse<String> r = send(req(url.toString()).GET());
         if (r.statusCode() < 200 || r.statusCode() >= 300) {
             throw new IOException("HTTP " + r.statusCode() + ": " + r.body());
         }
         String obj = r.body();
         return new com.benjagest.ui.model.PortfolioFinancialsEntry(
-                decFieldOrZero(obj, "billedThisMonth"),
+                decFieldOrZero(obj, "billed"),
                 decFieldOrZero(obj, "pendingPayment"),
                 (int) longFieldOrZero(obj, "overdueInvoices"),
-                (int) longFieldOrZero(obj, "activeClientsThisMonth"),
+                (int) longFieldOrZero(obj, "activeClients"),
                 (int) longFieldOrZero(obj, "pendingTpbApprovals"));
+    }
+
+    private static String urlParam(String raw) {
+        return java.net.URLEncoder.encode(raw, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private java.math.BigDecimal decFieldOrZero(String json, String field) {
