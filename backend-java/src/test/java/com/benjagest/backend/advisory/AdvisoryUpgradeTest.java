@@ -91,6 +91,31 @@ class AdvisoryUpgradeTest {
         assertEquals(1, moduloActivo(company, "billing"));
     }
 
+    /**
+     * La rama del {@code ON DUPLICATE KEY}: el caso REAL mas probable es que la
+     * empresa ya tenga fila de alguno de esos modulos, apagado desde
+     * Configuracion -> Modulos (V43 y ModuleRepository#setActive dejan la fila
+     * con active=FALSE y deactivated_at puesto). Subir tiene que reactivarla,
+     * sin duplicarla y limpiando la marca de desactivacion.
+     */
+    @Test
+    void reactivaUnModuloDeAsesoriaQueLaEmpresaTENIAApagado() {
+        String company = empresaCliente("Fiscal Apagado SL");
+        activarModulo(company, "tax");
+        jdbc.update("""
+                UPDATE company_modules cm
+                  JOIN module_catalog m ON m.id = cm.module_id
+                   SET cm.active = FALSE, cm.deactivated_at = CURRENT_TIMESTAMP
+                 WHERE cm.company_id = ? AND m.slug = 'tax'
+                """, company);
+
+        servicioPara(company).upgradeActiveCompany();
+
+        assertEquals(1, filasDeModulo(company, "tax"));
+        assertEquals(1, moduloActivo(company, "tax"));
+        assertEquals(0, filasConMarcaDeApagado(company, "tax"));
+    }
+
     /** Anti-objetivo: nada de datos se mueve — mismo company_id. */
     @Test
     void dejaLosDatosDeLaEmpresaIntactos() {
@@ -244,6 +269,17 @@ class AdvisoryUpgradeTest {
                 SELECT COUNT(*) FROM company_modules cm
                   JOIN module_catalog m ON m.id = cm.module_id
                  WHERE cm.company_id = ? AND m.slug = ?
+                """, Integer.class, companyId, slug);
+        return n == null ? 0 : n;
+    }
+
+    /** Filas del modulo que siguen con la marca de "desactivado" puesta. */
+    private static int filasConMarcaDeApagado(String companyId, String slug) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM company_modules cm
+                  JOIN module_catalog m ON m.id = cm.module_id
+                 WHERE cm.company_id = ? AND m.slug = ?
+                   AND cm.deactivated_at IS NOT NULL
                 """, Integer.class, companyId, slug);
         return n == null ? 0 : n;
     }
