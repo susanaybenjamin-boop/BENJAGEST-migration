@@ -38,20 +38,20 @@ embebida para el test de integracion, JavaFX 21 en la UI.
 
 1. **El OWNER actuando como cliente**: si pulsa el boton con `X-Company-Id` de un
    cliente, se debe subir SU empresa (`activeCompanyId`), no la del cliente.
-   -> test en Tarea 1.
+   -> test en Task 1.
 2. **Nada se apaga**: un modulo que el empresario tenia activo (p.ej.
-   `time-clock`) sigue activo despues de subir. -> test en Tarea 1.
+   `time-clock`) sigue activo despues de subir. -> test en Task 1.
 3. **Los datos siguen ahi**: clientes/facturas de la empresa intactos tras el
-   cambio de tipo. -> test en Tarea 1 (fila de `customers`) y paso 5 del smoke.
+   cambio de tipo. -> test en Task 1 (fila de `customers`) y paso 5 del smoke.
 4. **Repetir la llamada** no deja la empresa a medias ni duplica el self-link ni
-   filas de `company_modules`. -> test en Tarea 1.
+   filas de `company_modules`. -> test en Task 1.
 5. **Solo OWNER**: un ADMIN/ACCOUNTANT recibe 403 y no cambia nada. Lo corta
    `@RequiresRole`, que es un interceptor y no se ve en el test de servicio
-   -> se comprueba con `curl` en la Tarea 3.
+   -> se comprueba con `curl` en la Task 3.
 
 ---
 
-### Tarea 1: Backend — servicio, endpoint y tests
+### Task 1: Backend — servicio, endpoint y tests
 
 **Ficheros:**
 - Crear: `backend-java/src/main/java/com/benjagest/backend/advisory/AdvisoryUpgradeService.java`
@@ -146,7 +146,7 @@ git commit -m "feat(modos): endpoint para subir una empresa de empresario a ases
 
 ---
 
-### Tarea 2: UI — boton en Configuracion -> Empresa
+### Task 2: UI — boton en Configuracion -> Empresa
 
 **Ficheros:**
 - Modificar: `ui/src/main/java/com/benjagest/ui/service/SettingsApiClient.java`
@@ -161,7 +161,7 @@ git commit -m "feat(modos): endpoint para subir una empresa de empresario a ases
   `settings.company.*` ~linea 1178, bloque ES ~linea 2484)
 
 **Interfaces:**
-- Consume: `POST /api/advisory/upgrade` de la Tarea 1 y sus tres codigos.
+- Consume: `POST /api/advisory/upgrade` de la Task 1 y sus tres codigos.
 - Produce: `SettingsApiClient.upgradeToAdvisory()` (sin parametros, `void`,
   `throws IOException, InterruptedException`) y `Host.logoutAndExit()`.
 
@@ -222,7 +222,7 @@ git commit -m "feat(modos): boton para subir a asesoria en Configuracion -> Empr
 
 ---
 
-### Tarea 3: Verificacion en ejecucion y cierre
+### Task 3: Verificacion en ejecucion y cierre
 
 **Ficheros:**
 - Modificar: `docs/backlog.md` (entrada de la sesion + lo que queda fuera: la

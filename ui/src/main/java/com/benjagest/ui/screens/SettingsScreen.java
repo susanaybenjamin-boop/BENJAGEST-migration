@@ -56,6 +56,8 @@ public class SettingsScreen extends ScreenBase {
         // Puentes de "Mi asesoría" hacia estado global del shell (invitaciones + sidebar).
         void pollPendingInvitations();
         void refreshActiveModulesAndRender();
+        // MODE-UP — cierra sesion y la app (el modo se arma al arrancar el shell).
+        void logoutAndExit();
         void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a, javafx.scene.layout.VBox parentSlot);
         void tpbDownloadSignedPdfAction(String agreementId);
         void tpbRevokeAction(String agreementId, Runnable onDone);
@@ -727,8 +729,89 @@ public class SettingsScreen extends ScreenBase {
                 logoSection
         );
 
+        // MODE-UP — "Subir a modo asesoria". Solo aparece a quien puede hacerlo
+        // (OWNER de una empresa CLIENT en modo empresario); el backend lo vuelve
+        // a comprobar.
+        Node upgradeSection = buildAdvisoryUpgradeSection(company);
+        if (upgradeSection != null) {
+            body.getChildren().addAll(new Separator(), upgradeSection);
+        }
+
         Label sectionTitle = label(t("settings.company.section_label"), "settings-section-title");
         return tabLayout(sectionTitle, body, actions);
+    }
+
+    // ============================================================
+    //  MODE-UP — Subida de EMPRESARIO a ASESORIA
+    // ============================================================
+
+    /**
+     * Bloque que ofrece convertir la cuenta en asesoria. Devuelve {@code null}
+     * cuando no aplica: en modo asesoria (ya esta hecho), en una empresa que no
+     * sea CLIENT, o si quien mira no es OWNER.
+     */
+    private Node buildAdvisoryUpgradeSection(CompanyData company) {
+        boolean clientCompany = "CLIENT".equalsIgnoreCase(company.companyType());
+        boolean owner = "OWNER".equalsIgnoreCase(
+                com.benjagest.ui.service.AuthSession.get().roleInActiveCompany());
+        if (appMode == AppMode.ADVISORY || !clientCompany || !owner) return null;
+
+        Label title = label(t("settings.company.upgrade.section"), "settings-section-title");
+        Label hint = label(t("settings.company.upgrade.hint"), "settings-hint");
+        hint.setWrapText(true);
+        Button upgrade = new Button(t("settings.company.upgrade.button"));
+        upgrade.setGraphic(icon("fas-briefcase"));
+        upgrade.getStyleClass().add("primary-button");
+        upgrade.setOnAction(ev -> confirmAdvisoryUpgrade());
+        HBox upgradeActions = new HBox(8, upgrade);
+        upgradeActions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox box = new VBox(8, title, hint, upgradeActions);
+        box.getStyleClass().add("settings-section");
+        return box;
+    }
+
+    /**
+     * Confirmacion + llamada. Al terminar bien, la app se cierra: el modo se
+     * arma al arrancar el shell, asi que hay que volver a abrirla para entrar ya
+     * como asesoria.
+     */
+    private void confirmAdvisoryUpgrade() {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+        confirm.setTitle(t("settings.company.upgrade.confirm.title"));
+        confirm.setHeaderText(t("settings.company.upgrade.confirm.title"));
+        confirm.getDialogPane().setContentText(t("settings.company.upgrade.confirm.body"));
+        confirm.getDialogPane().setPrefSize(620, 320);
+        if (host.ownerWindow() != null) confirm.initOwner(host.ownerWindow());
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                settingsApiClient.upgradeToAdvisory();
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            // info() es modal: el cierre ocurre cuando el usuario acepta.
+            showInfo(t("settings.company.upgrade.done.title"),
+                    t("settings.company.upgrade.done.body"));
+            host.logoutAndExit();
+        });
+        task.setOnFailed(ev -> {
+            Throwable error = task.getException();
+            String raw = error == null || error.getMessage() == null ? "" : error.getMessage();
+            String key;
+            if (raw.contains("LINKED_TO_ADVISORY")) {
+                key = "settings.company.upgrade.error.linked";
+            } else if (raw.contains("ALREADY_ADVISORY")) {
+                key = "settings.company.upgrade.error.already";
+            } else {
+                key = "settings.company.upgrade.error.generic";
+            }
+            showError(t("settings.company.upgrade.error.title"), t(key));
+        });
+        start(task, "advisory-upgrade");
     }
 
     // ============================================================
