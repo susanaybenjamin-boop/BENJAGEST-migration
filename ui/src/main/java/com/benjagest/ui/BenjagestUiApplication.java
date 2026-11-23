@@ -1742,28 +1742,10 @@ public class BenjagestUiApplication extends Application
 
         Button logout = new Button(t("logout"));
         logout.setGraphic(icon("fas-sign-out-alt"));
-        logout.setOnAction(event -> {
-            // Revocamos el refresh token en backend antes de limpiar el
-            // estado local. Asi, si alguien recupera ese refresh ya no
-            // sirve para generar mas accesses.
-            stopInvitationsPolling();
-            stopAdvisoryClientsPolling();
-            stopAdvisoryNotificationsPolling();
-            stopDehuPolling();
-            stopRealtime();
-            authApiClient.logout();
-            session = null;
-            activeModulesCache = List.of();
-            AuthSession.get().clear();
-            refreshLockTimeout(0); // desarma el bloqueo por inactividad al salir
-            // FIX Benjamin 2026-07-10: "Salir" volvía a la pantalla de login
-            // con la BD embebida ya apagada → ni contraseña ni PIN funcionaban.
-            // Salir = CERRAR el programa entero (mismo camino ordenado que el
-            // cierre de ventana); para reentrar se vuelve a abrir la app.
-            com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
-            javafx.application.Platform.exit();
-            System.exit(0);
-        });
+        logout.setOnAction(event -> logoutAndExit());
+        // MODE-UP: el mismo camino lo usa Configuracion -> Empresa tras subir a
+        // asesoria (hay que reabrir la app para que el shell se arme en el modo
+        // nuevo), por eso vive en un metodo y no en el handler del boton.
 
         HBox header = new HBox(14, AppBrand.createLogoMark(), titleBlock, spacer);
         // Campana en AMBOS modos. El bell decide internamente qué
@@ -1773,6 +1755,34 @@ public class BenjagestUiApplication extends Application
         header.setAlignment(Pos.CENTER_LEFT);
         header.getStyleClass().add("app-header");
         return header;
+    }
+
+    /**
+     * Cierra la sesion y la aplicacion, en ese orden y por el camino ordenado.
+     *
+     * <p>Primero se revoca el refresh token en el backend y luego se limpia el
+     * estado local, para que un refresh robado ya no sirva para emitir accesses.
+     *
+     * <p>FIX Benjamin 2026-07-10: "Salir" volvia a la pantalla de login con la
+     * BD embebida ya apagada y no funcionaban ni contrasena ni PIN. Salir =
+     * CERRAR el programa entero; para reentrar se vuelve a abrir la app. MODE-UP
+     * reutiliza esto tras subir a asesoria, porque el modo se arma al arrancar
+     * el shell.
+     */
+    private void logoutAndExit() {
+        stopInvitationsPolling();
+        stopAdvisoryClientsPolling();
+        stopAdvisoryNotificationsPolling();
+        stopDehuPolling();
+        stopRealtime();
+        authApiClient.logout();
+        session = null;
+        activeModulesCache = List.of();
+        AuthSession.get().clear();
+        refreshLockTimeout(0); // desarma el bloqueo por inactividad al salir
+        com.benjagest.ui.support.WindowGeometry.save(primaryStage); // MULTIMON: antes de morir la JVM
+        javafx.application.Platform.exit();
+        System.exit(0);
     }
 
     private VBox sidebar() {
@@ -6562,6 +6572,8 @@ public class BenjagestUiApplication extends Application
                     }
                     @Override public void pollPendingInvitations() { BenjagestUiApplication.this.pollPendingInvitations(); }
                     @Override public void refreshActiveModulesAndRender() { BenjagestUiApplication.this.refreshActiveModulesAndRender(); }
+                    // MODE-UP: tras subir a asesoria hay que reabrir la app.
+                    @Override public void logoutAndExit() { BenjagestUiApplication.this.logoutAndExit(); }
                     @Override public void showTpbSignWithPinDialog(com.benjagest.ui.model.TpbAgreementEntry a, javafx.scene.layout.VBox parentSlot) { BenjagestUiApplication.this.showTpbSignWithPinDialog(a, parentSlot); }
                     @Override public void tpbDownloadSignedPdfAction(String id) { BenjagestUiApplication.this.tpbDownloadSignedPdfAction(id); }
                     @Override public void tpbRevokeAction(String id, Runnable onDone) { BenjagestUiApplication.this.tpbRevokeAction(id, onDone); }

@@ -1176,6 +1176,18 @@ public final class I18n {
                 case "tax.editor.fail.title" -> "Could not save";
                 case "tax.editor.fail.body" -> "Check the data and try again.";
                 case "settings.company.section_label" -> "Company";
+                // MODE-UP — subir la cuenta de empresario a asesoria.
+                case "settings.company.upgrade.section" -> "Upgrade to accounting-firm mode";
+                case "settings.company.upgrade.hint" -> "Your company becomes the accounting firm and keeps every invoice, journal entry, employee and setting it has today: nothing is moved and nothing is deleted. Your own business is then managed from \"My management\", and you get the client portfolio.";
+                case "settings.company.upgrade.button" -> "Convert to accounting firm";
+                case "settings.company.upgrade.confirm.title" -> "Convert this account into an accounting firm?";
+                case "settings.company.upgrade.confirm.body" -> "What changes:\n\n- \"My management\" and the client portfolio appear in the menu.\n- Billing, Purchases, Payroll and Tax move inside \"My management\" (same screens, one click deeper).\n- Tax forms, the mailbox and the Team module become available.\n\nWhat does NOT change: your data. Same company, same tax ID, same invoices, journal, employees and certificates.\n\nBENJAGEST closes when it is done; open it again to come back in accounting-firm mode.";
+                case "settings.company.upgrade.done.title" -> "Account converted";
+                case "settings.company.upgrade.done.body" -> "Your account is now an accounting firm. BENJAGEST will close: open it again and you will come in with the new menu, with all your data in \"My management\".";
+                case "settings.company.upgrade.error.title" -> "Could not convert the account";
+                case "settings.company.upgrade.error.linked" -> "This company is linked to an accounting firm. Unlink it first (Settings -> My accounting firm): as a firm it would lose the Communication module with your advisor.";
+                case "settings.company.upgrade.error.already" -> "This account is already an accounting firm. Close and open BENJAGEST to see the accounting-firm menu.";
+                case "settings.company.upgrade.error.generic" -> "The conversion did not go through and nothing was changed. Try again; if it keeps failing, check that the backend is running.";
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
                 case "settings.company.section.billing" -> "Billing data";
@@ -2482,6 +2494,18 @@ public final class I18n {
             case "tax.editor.fail.title" -> "No se pudo guardar";
             case "tax.editor.fail.body" -> "Revisa los datos e intentalo de nuevo.";
             case "settings.company.section_label" -> "Empresa";
+            // MODE-UP — subir la cuenta de empresario a asesoria.
+            case "settings.company.upgrade.section" -> "Subir a modo asesoria";
+            case "settings.company.upgrade.hint" -> "Tu empresa pasa a ser la asesoria y conserva todas las facturas, asientos, empleados y ajustes que tiene hoy: no se mueve ni se borra nada. Tu propio negocio se gestiona desde \"Mi gestion\", y ganas la cartera de clientes.";
+            case "settings.company.upgrade.button" -> "Convertir en asesoria";
+            case "settings.company.upgrade.confirm.title" -> "¿Convertir esta cuenta en asesoria?";
+            case "settings.company.upgrade.confirm.body" -> "Lo que cambia:\n\n- Aparecen \"Mi gestion\" y la cartera de clientes en el menu.\n- Facturacion, Compras, Laboral y Fiscal pasan a abrirse dentro de \"Mi gestion\" (las mismas pantallas, un clic mas adentro).\n- Se activan los Modelos AEAT, el buzon y el modulo Equipo.\n\nLo que NO cambia: tus datos. Misma empresa, mismo NIF, mismas facturas, diario, empleados y certificados.\n\nAl terminar, BENJAGEST se cierra; vuelve a abrirlo para entrar ya en modo asesoria.";
+            case "settings.company.upgrade.done.title" -> "Cuenta convertida";
+            case "settings.company.upgrade.done.body" -> "Tu cuenta ya es una asesoria. BENJAGEST se va a cerrar: vuelve a abrirlo y entraras con el menu nuevo, con todos tus datos en \"Mi gestion\".";
+            case "settings.company.upgrade.error.title" -> "No se pudo convertir la cuenta";
+            case "settings.company.upgrade.error.linked" -> "Esta empresa esta vinculada a una asesoria. Desvinculala primero (Configuracion -> Mi asesoria): como asesoria perderia el modulo Comunicacion con tu gestor.";
+            case "settings.company.upgrade.error.already" -> "Esta cuenta ya es una asesoria. Cierra y abre BENJAGEST para ver el menu de asesoria.";
+            case "settings.company.upgrade.error.generic" -> "La conversion no se hizo y no se ha cambiado nada. Vuelve a intentarlo; si sigue fallando, comprueba que el backend esta arrancado.";
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
             case "settings.company.section.billing" -> "Datos de facturacion";

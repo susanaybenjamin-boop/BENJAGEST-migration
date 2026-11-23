@@ -51,6 +51,22 @@ public class SettingsApiClient {
         return parseCompany(response.body());
     }
 
+    /**
+     * MODE-UP — Sube la cuenta de EMPRESARIO a ASESORIA (misma empresa, mismo
+     * NIF, mismos datos; cambia el tipo y se enciende el modo asesoria).
+     *
+     * <p>Los rechazos llegan como {@code IOException} con el texto
+     * {@code "HTTP 409: {...\"message\":\"LINKED_TO_ADVISORY\"...}"} — la
+     * pantalla busca ahi el codigo para elegir el mensaje.
+     */
+    public void upgradeToAdvisory() throws IOException, InterruptedException {
+        HttpResponse<String> response = sendAuthorized(
+                HttpRequest.newBuilder(URI.create(baseUrl + "/advisory/upgrade"))
+                        .timeout(Duration.ofSeconds(20))
+                        .POST(HttpRequest.BodyPublishers.noBody()));
+        ensureOk(response);
+    }
+
     public CompanyData updateCompany(CompanyData data) throws IOException, InterruptedException {
         String body = "{"
                 + field("legalName", data.legalName()) + ","
