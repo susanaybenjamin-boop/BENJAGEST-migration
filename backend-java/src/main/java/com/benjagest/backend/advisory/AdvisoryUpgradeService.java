@@ -31,8 +31,21 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AdvisoryUpgradeService {
 
-    /** Modulos que una asesoria lleva de alta y un empresario no (RegisterService). */
-    private static final List<String> ADVISORY_MODULES = List.of("tax", "notifications", "team");
+    /**
+     * Modulos que necesita una asesoria y un empresario no tiene.
+     *
+     * <p>{@code advisory} es el que manda: sin el, {@code @RequiresModule} corta
+     * {@code /api/advisory/clients} con un 403 y la asesoria no ve ni su cartera
+     * ni "Mi gestion" (que entra por ahi). Lo descubrio el smoke de ejecucion de
+     * MODE-UP: ese modulo solo se activaba en el seed V8, asi que ni un alta de
+     * asesoria por {@code /api/auth/register} ni una conversion lo encendian.
+     *
+     * <p>{@code tax} (Modelos AEAT) y {@code notifications} (buzon) son los que
+     * {@code RegisterService} da de alta a una asesoria y no a un empresario, y
+     * {@code team} es el reparto de clientes entre empleados (V69).
+     */
+    private static final List<String> ADVISORY_MODULES =
+            List.of("advisory", "tax", "notifications", "team");
 
     private final JdbcTemplate jdbc;
     private final CurrentUserService currentUser;

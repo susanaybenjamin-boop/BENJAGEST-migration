@@ -73,6 +73,11 @@ class AdvisoryUpgradeTest {
         assertEquals(1, moduloActivo(company, "tax"));
         assertEquals(1, moduloActivo(company, "notifications"));
         assertEquals(1, moduloActivo(company, "team"));
+        // Sin 'advisory' activo, /api/advisory/clients responde 403 por
+        // @RequiresModule y la asesoria no ve ni su cartera ni "Mi gestion".
+        // Lo encontro el smoke de ejecucion: ese modulo solo se activaba en el
+        // seed V8, nunca en un alta ni en una conversion.
+        assertEquals(1, moduloActivo(company, "advisory"));
     }
 
     /** Anti-objetivo: subir de modo no puede apagarle nada al empresario. */
