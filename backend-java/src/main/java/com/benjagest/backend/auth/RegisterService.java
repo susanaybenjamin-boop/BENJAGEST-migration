@@ -143,11 +143,19 @@ public class RegisterService {
      * fiscales/DEHú (Modelos AEAT = tax, buzón = notifications); el EMPRESARIO
      * NO (decisión Benjamin 2026-06-26: esos son de la asesoría) pero empieza con
      * el resto activo y desactiva lo que no use desde Configuración.
+     *
+     * <p>REG-ADVISORY-MOD (2026-11-24) — la asesoría lleva además {@code advisory}
+     * y {@code team}, que antes faltaban. Sin {@code advisory},
+     * {@code @RequiresModule} corta {@code /api/advisory/clients} con un 403 y la
+     * asesoría recién dada de alta no ve ni su cartera ni "Mi gestión", que entra
+     * por ahí; ese módulo solo se activaba en el seed V8, y {@code team} solo en
+     * la V69 para las asesorías que ya existían entonces. Es el mismo agujero que
+     * apareció en el smoke de MODE-UP, por el otro camino.
      */
     private void activateEssentialModules(String companyId, boolean advisory) {
         String slugs = advisory
                 ? "'core','billing','purchases','accounting','tax','calendar',"
-                  + "'notifications','labor','settings'"
+                  + "'notifications','labor','settings','advisory','team'"
                 : "'core','billing','purchases','accounting','calendar',"
                   + "'labor','settings','time-clock'";
         jdbc.update("""
