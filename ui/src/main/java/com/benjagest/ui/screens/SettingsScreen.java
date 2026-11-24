@@ -742,6 +742,62 @@ public class SettingsScreen extends ScreenBase {
     }
 
     // ============================================================
+    //  PIN-PAIR-SESSION — Emparejar este equipo desde la sesion
+    // ============================================================
+
+    /**
+     * Empareja ESTE equipo con la sesión ya abierta, para poder abrir la app
+     * con el PIN. Es el camino de quien entra con Google: el emparejado de la
+     * pantalla de arranque pide la contraseña de la cuenta, y una cuenta de
+     * Google no tiene.
+     *
+     * <p>Sin PIN de sesión definido no se empareja: el teclado del arranque
+     * compara contra ese PIN, así que el equipo quedaría emparejado y sin
+     * forma de entrar.
+     */
+    private void pairThisDevice(boolean[] sessionPinConfigured, Runnable reloadDevices) {
+        if (!sessionPinConfigured[0]) {
+            showInfo(t("settings.session.devices.pair_this.need_pin.title"),
+                    t("settings.session.devices.pair_this.need_pin.body"));
+            return;
+        }
+        TextInputDialog ask = new TextInputDialog();
+        ask.setTitle(t("settings.session.devices.pair_this"));
+        ask.setHeaderText(t("settings.session.devices.pair_this.ask.title"));
+        ask.setContentText(t("settings.session.devices.pair_this.ask.prompt"));
+        ask.getDialogPane().setPrefSize(520, 220);
+        if (host.ownerWindow() != null) ask.initOwner(host.ownerWindow());
+        String name = ask.showAndWait().map(String::trim).orElse("");
+        if (name.isEmpty()) return;
+
+        Task<com.benjagest.ui.service.AuthApiClient.PairResult> task = new Task<>() {
+            @Override protected com.benjagest.ui.service.AuthApiClient.PairResult call()
+                    throws Exception {
+                return altaApiClient.pairThisDevice(name);
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            var r = task.getValue();
+            try {
+                com.benjagest.ui.service.DeviceConfig.save(
+                        r.deviceId(), r.deviceSecret(), r.companyId(), r.companyName());
+            } catch (java.io.IOException ex) {
+                showError(t("settings.session.devices.pair_this.fail.title"),
+                        t("pin.pair.save.fail.body"));
+                return;
+            }
+            showInfo(t("settings.session.devices.pair_this.ok.title"),
+                    t("settings.session.devices.pair_this.ok.body"));
+            reloadDevices.run();
+        });
+        task.setOnFailed(ev -> showError(t("settings.session.devices.pair_this.fail.title"),
+                task.getException() == null || task.getException().getMessage() == null
+                        ? t("settings.session.devices.pair_this.fail.body")
+                        : task.getException().getMessage()));
+        start(task, "pair-this-device");
+    }
+
+    // ============================================================
     //  MODE-UP — Subida de EMPRESARIO a ASESORIA
     // ============================================================
 
@@ -884,10 +940,31 @@ public class SettingsScreen extends ScreenBase {
         devRevoke.setDisable(true);
         devList.getSelectionModel().selectedItemProperty().addListener(
                 (o, a, b) -> devRevoke.setDisable(b == null));
-        HBox devActions = new HBox(8, devRefresh, devRevoke);
+        // ¿Hay PIN de sesión definido? Lo rellena la carga de más abajo. Sin
+        // PIN, emparejar no sirve de nada: el teclado del arranque no te
+        // dejaría entrar.
+        boolean[] sessionPinConfigured = { false };
+
+        // PIN-PAIR-SESSION — emparejar ESTE equipo con la sesión ya abierta.
+        // El emparejado de la pantalla de arranque pide la contraseña de la
+        // cuenta, y quien entra con Google no tiene: este es su camino.
+        Button devPairThis = new Button(t("settings.session.devices.pair_this"));
+        devPairThis.setGraphic(icon("fas-link"));
+        devPairThis.getStyleClass().add("primary-button");
+        HBox devActions = new HBox(8, devPairThis, devRefresh, devRevoke);
         devActions.setAlignment(Pos.CENTER_LEFT);
         VBox devSection = new VBox(8, devTitle, devHint, devList, devActions);
         devSection.getStyleClass().add("settings-section");
+
+        // PIN-PAIR-SESSION — "Cómo entras": hasta ahora la app no decía en
+        // ningún sitio si la cuenta tiene contraseña, con lo que el emparejado
+        // clásico fallaba con un "Credenciales no válidas" sin explicación.
+        Label loginTitle = label(t("settings.session.login_method.title"), "settings-section-title");
+        Label loginStatus = new Label(t("settings.session.login_method.unknown"));
+        loginStatus.setWrapText(true);
+        loginStatus.getStyleClass().add("settings-hint");
+        VBox loginSection = new VBox(8, loginTitle, loginStatus);
+        loginSection.getStyleClass().add("settings-section");
 
         Runnable reloadDevices = () -> {
             Task<java.util.List<com.benjagest.ui.model.PairedDeviceEntry>> dtask = new Task<>() {
@@ -921,6 +998,7 @@ public class SettingsScreen extends ScreenBase {
                 start(rtask, "revoke-device");
             });
         });
+        devPairThis.setOnAction(e -> pairThisDevice(sessionPinConfigured, reloadDevices));
         reloadDevices.run();
 
         // --- Sección 3: Salvapantallas ---
@@ -935,9 +1013,35 @@ public class SettingsScreen extends ScreenBase {
         HBox footer = new HBox(saveBtn);
         footer.setAlignment(Pos.CENTER_RIGHT);
 
-        body.getChildren().addAll(lockSection, pinSection, devSection, footer);
+        body.getChildren().addAll(loginSection, lockSection, pinSection, devSection, footer);
 
         // --- Carga + handlers ---
+        Runnable reloadLoginMethods = () -> {
+            Task<com.benjagest.ui.service.AltaApiClient.LoginMethods> lm = new Task<>() {
+                @Override protected com.benjagest.ui.service.AltaApiClient.LoginMethods call()
+                        throws Exception {
+                    return altaApiClient.loginMethods();
+                }
+            };
+            lm.setOnSucceeded(ev -> {
+                var m = lm.getValue();
+                String key;
+                if (m.hasPassword() && m.googleLinked()) {
+                    key = "settings.session.login_method.both";
+                } else if (m.googleLinked()) {
+                    key = "settings.session.login_method.google";
+                } else if (m.hasPassword()) {
+                    key = "settings.session.login_method.password";
+                } else {
+                    key = "settings.session.login_method.unknown";
+                }
+                loginStatus.setText(t(key));
+            });
+            lm.setOnFailed(ev -> { /* silencioso: es informativo */ });
+            start(lm, "login-methods");
+        };
+        reloadLoginMethods.run();
+
         Runnable reload = () -> {
             Task<com.benjagest.ui.model.SessionStatusEntry> task = new Task<>() {
                 @Override protected com.benjagest.ui.model.SessionStatusEntry call() throws Exception {
@@ -947,6 +1051,7 @@ public class SettingsScreen extends ScreenBase {
             task.setOnSucceeded(ev -> {
                 var s = task.getValue();
                 timeoutSpin.getValueFactory().setValue(s.pinTimeoutMin());
+                sessionPinConfigured[0] = s.pinConfigured();
                 if (s.pinConfigured()) {
                     pinStatus.setText(t("settings.session.pin.status.configured"));
                     definePinBtn.setDisable(true);

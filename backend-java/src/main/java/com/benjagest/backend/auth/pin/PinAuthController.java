@@ -79,6 +79,26 @@ public class PinAuthController {
 
     // ----- Autenticados ----------------------------------------------------
 
+    /**
+     * PIN-PAIR-SESSION — Empareja ESTE equipo con la sesión ya abierta, sin
+     * pedir la contraseña otra vez. Es el único camino para una cuenta que
+     * entra con Google, que no tiene contraseña que dar. Las demás reglas no
+     * cambian: el servicio comprueba contra la BD que seas OWNER de una
+     * asesoría y respeta el tope de equipos.
+     */
+    @PostMapping("/devices/pair-current")
+    public PairResponse pairCurrent(@Valid @RequestBody PairCurrentRequest req) {
+        var current = currentUserService.require();
+        return deviceTokenService.pairFromSession(
+                current.userId(), current.activeCompanyId(), req.deviceName());
+    }
+
+    /** Solo el nombre con el que se verá el equipo en "Mis equipos". */
+    public record PairCurrentRequest(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Size(max = 120) String deviceName) {
+    }
+
     @GetMapping("/devices")
     public List<DeviceListItem> listDevices() {
         var current = currentUserService.require();

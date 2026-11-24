@@ -96,7 +96,47 @@ public class DeviceTokenService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Solo el OWNER de una asesoría puede emparejar dispositivos"));
 
-        int activos = repository.countActiveByCompany(ownerMembership.companyId());
+        return issueDeviceToken(user.id(), ownerMembership.companyId(),
+                ownerMembership.companyLegalName(), req.deviceName(), "password");
+    }
+
+    /**
+     * PIN-PAIR-SESSION — Empareja ESTE equipo con el usuario que ya está
+     * autenticado, sin volver a pedir la contraseña.
+     *
+     * <p>Existe porque {@link #pair} exige contraseña y una cuenta que entra
+     * con Google no tiene: sin esto no hay forma de emparejar y, por tanto, de
+     * abrir la aplicación con PIN. La autorización la da la sesión (JWT), que
+     * es la misma puerta por la que el usuario ya está dentro.
+     *
+     * <p><b>No rebaja ninguna otra regla</b>: sigue siendo cosa del OWNER de
+     * una asesoría y sigue el tope de {@link #MAX_ACTIVE_DEVICES_PER_COMPANY}.
+     * El rol y la empresa se comprueban contra la BD, no contra lo que diga el
+     * cliente.
+     */
+    public PairResponse pairFromSession(String userId, String companyId, String deviceName) {
+        AuthRepository.MembershipRecord membership = authRepository
+                .findMembershipsForUser(userId).stream()
+                .filter(m -> m.companyId().equals(companyId))
+                .filter(m -> "OWNER".equals(m.roleName()))
+                .filter(m -> "INTERNAL".equalsIgnoreCase(m.companyType())
+                        || "ADVISORY".equalsIgnoreCase(m.companyType()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Solo el OWNER de una asesoría puede emparejar dispositivos"));
+
+        return issueDeviceToken(userId, membership.companyId(),
+                membership.companyLegalName(), deviceName, "session");
+    }
+
+    /**
+     * Cuerpo común de los dos emparejados: tope, secret, fila y auditoría. Lo
+     * único que cambia entre ellos es cómo se autorizó, y eso queda escrito en
+     * el evento ({@code via}).
+     */
+    private PairResponse issueDeviceToken(String userId, String companyId,
+                                          String companyName, String deviceName, String via) {
+        int activos = repository.countActiveByCompany(companyId);
         if (activos >= MAX_ACTIVE_DEVICES_PER_COMPANY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Has alcanzado el límite de " + MAX_ACTIVE_DEVICES_PER_COMPANY
@@ -108,17 +148,16 @@ public class DeviceTokenService {
         String hash = passwordEncoder.encode(secret);
         String tokenId = UUID.randomUUID().toString();
 
-        DeviceToken token = new DeviceToken(tokenId, ownerMembership.companyId(),
-                hash, prefix, req.deviceName(),
-                null, user.id(), null, null, null);
+        DeviceToken token = new DeviceToken(tokenId, companyId,
+                hash, prefix, deviceName,
+                null, userId, null, null, null);
         repository.insert(token);
 
-        auditService.recordGeneric(ownerMembership.companyId(), user.id(),
+        auditService.recordGeneric(companyId, userId,
                 "DEVICE_TOKEN_PAIRED", "device_token", tokenId, "OK",
-                "{\"deviceName\":\"" + escape(req.deviceName()) + "\"}");
+                "{\"deviceName\":\"" + escape(deviceName) + "\",\"via\":\"" + via + "\"}");
 
-        return new PairResponse(tokenId, secret, ownerMembership.companyId(),
-                ownerMembership.companyLegalName(), user.id());
+        return new PairResponse(tokenId, secret, companyId, companyName, userId);
     }
 
     /**

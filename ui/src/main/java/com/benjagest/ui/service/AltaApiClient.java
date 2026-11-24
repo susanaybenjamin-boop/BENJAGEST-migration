@@ -974,6 +974,34 @@ public class AltaApiClient {
         sendAsOwner(req(baseUrl + "/auth/devices/" + deviceId).DELETE());
     }
 
+    /**
+     * PIN-PAIR-SESSION — Empareja ESTE equipo usando la sesión ya abierta, sin
+     * pedir la contraseña. Es el camino que sirve cuando se entra con Google.
+     * Devuelve lo mismo que el emparejado clásico para que la UI lo guarde con
+     * {@code DeviceConfig}.
+     */
+    public com.benjagest.ui.service.AuthApiClient.PairResult pairThisDevice(String deviceName)
+            throws IOException, InterruptedException {
+        String body = "{\"deviceName\":\"" + escape(deviceName) + "\"}";
+        HttpResponse<String> r = sendAsOwner(req(baseUrl + "/auth/devices/pair-current")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)));
+        return new com.benjagest.ui.service.AuthApiClient.PairResult(
+                textField(r.body(), "deviceId"),
+                textField(r.body(), "deviceSecret"),
+                textField(r.body(), "companyId"),
+                textField(r.body(), "companyName"));
+    }
+
+    /** Con qué puede entrar la cuenta actual (Configuración → Sesión). */
+    public LoginMethods loginMethods() throws IOException, InterruptedException {
+        HttpResponse<String> r = send(req(baseUrl + "/auth/me").GET());
+        return new LoginMethods(boolField(r.body(), "hasPassword"),
+                boolField(r.body(), "googleLinked"));
+    }
+
+    public record LoginMethods(boolean hasPassword, boolean googleLinked) {}
+
     public SystemInfo fetchSystemInfo() throws IOException, InterruptedException {
         HttpResponse<String> r = sendAsOwner(req(baseUrl + "/system/info").GET());
         String db = textField(r.body(), "database");
