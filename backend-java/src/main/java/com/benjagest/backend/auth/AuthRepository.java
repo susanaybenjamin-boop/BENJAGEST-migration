@@ -38,6 +38,33 @@ public class AuthRepository {
                 companyId);
     }
 
+    /**
+     * PIN-PAIR-SESSION — Con qué puede entrar esta cuenta. Lo pinta
+     * Configuración → Sesión, y explica por qué una cuenta de Google no puede
+     * usar el emparejado clásico (que pide contraseña).
+     *
+     * <p>Solo dice SI existe cada cosa: ni el hash ni el id de Google salen de
+     * aquí.
+     */
+    public LoginMethods loginMethods(String userId) {
+        LoginMethods m = jdbcTemplate.query("""
+                SELECT password_hash IS NOT NULL AS has_password,
+                       google_id IS NOT NULL      AS google_linked
+                  FROM user_accounts
+                 WHERE id = ?
+                """,
+                rs -> rs.next()
+                        ? new LoginMethods(rs.getBoolean("has_password"),
+                                           rs.getBoolean("google_linked"))
+                        : null,
+                userId);
+        return m == null ? new LoginMethods(false, false) : m;
+    }
+
+    /** Métodos con los que una cuenta puede entrar. */
+    public record LoginMethods(boolean hasPassword, boolean googleLinked) {
+    }
+
     /** REG-VERIFY — ¿la cuenta tiene el email verificado? (gate del login). */
     public boolean isEmailVerified(String userId) {
         Boolean v = jdbcTemplate.query(

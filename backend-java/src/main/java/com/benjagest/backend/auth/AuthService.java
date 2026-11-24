@@ -177,6 +177,7 @@ public class AuthService {
 
     public MeResponse me(AuthenticatedUser current) {
         List<AuthRepository.MembershipRecord> memberships = repository.findMembershipsForUser(current.userId());
+        AuthRepository.LoginMethods metodos = repository.loginMethods(current.userId());
         return new MeResponse(
                 current.userId(),
                 current.email(),
@@ -184,7 +185,9 @@ public class AuthService {
                 current.globalRole(),
                 current.activeCompanyId(),
                 current.roleInActiveCompany(),
-                toMembershipDtos(memberships)
+                toMembershipDtos(memberships),
+                metodos.hasPassword(),
+                metodos.googleLinked()
         );
     }
 

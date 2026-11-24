@@ -9,6 +9,11 @@ public record MeResponse(
         String globalRole,
         String activeCompanyId,
         String roleInActiveCompany,
-        List<MembershipResponse> memberships
+        List<MembershipResponse> memberships,
+        // PIN-PAIR-SESSION — con que puede entrar la cuenta. Solo el SI/NO:
+        // Configuracion -> Sesion lo muestra, y explica por que una cuenta de
+        // Google no puede usar el emparejado que pide contrasena.
+        boolean hasPassword,
+        boolean googleLinked
 ) {
 }

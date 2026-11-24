@@ -3103,7 +3103,7 @@ public final class I18n {
         return switch (key) {
             // Pantalla de emparejado
             case "pin.pair.title" -> "Pair this computer";
-            case "pin.pair.subtitle" -> "BENJAGEST is a multi-station app — you can install it on up to 5 computers per advisory. Sign in once with your administrator credentials to pair this PC; afterwards, each employee uses their PIN.";
+            case "pin.pair.subtitle" -> "BENJAGEST is a multi-station app — you can install it on up to 5 computers per accounting firm. Sign in once with your administrator email and password to pair this PC; afterwards, each employee uses their PIN. If you sign in with Google, your account has no password: open BENJAGEST with your usual sign-in and pair from Settings -> Session -> Paired devices.";
             case "pin.pair.email_prompt" -> "Administrator email";
             case "pin.pair.password_prompt" -> "Password";
             case "pin.pair.device_name_prompt" -> "Name for this PC";
@@ -3145,7 +3145,7 @@ public final class I18n {
     static String tPinLoginEs(String key) {
         return switch (key) {
             case "pin.pair.title" -> "Emparejar este equipo";
-            case "pin.pair.subtitle" -> "BENJAGEST es una app multi-puesto — puedes instalarla en hasta 5 ordenadores por asesoría. Entra una sola vez con tus credenciales de administrador para emparejar este PC; después cada empleado entra con su PIN.";
+            case "pin.pair.subtitle" -> "BENJAGEST es una app multi-puesto — puedes instalarla en hasta 5 ordenadores por asesoría. Entra una sola vez con el email y la contraseña del administrador para emparejar este PC; después cada empleado entra con su PIN. Si entras con Google, tu cuenta no tiene contraseña: abre BENJAGEST como siempre y empareja desde Configuración -> Sesión -> Equipos vinculados.";
             case "pin.pair.email_prompt" -> "Email del administrador";
             case "pin.pair.password_prompt" -> "Contraseña";
             case "pin.pair.device_name_prompt" -> "Nombre para este PC";
@@ -3412,6 +3412,21 @@ public final class I18n {
             case "settings.session.pin.title" -> "Session PIN";
             case "settings.session.pin.hint" -> "Numeric PIN (4–8 digits) used only to unlock after auto-lock. Different from the device pairing PIN of multi-station mode.";
             case "settings.session.devices.title" -> "Paired devices (multi-station)";
+                // PIN-PAIR-SESSION
+                case "settings.session.login_method.title" -> "How you sign in";
+                case "settings.session.login_method.unknown" -> "Checking how this account signs in...";
+                case "settings.session.login_method.password" -> "With your email and password.";
+                case "settings.session.login_method.google" -> "With Google. This account has no password, so the pairing screen at start-up cannot be used — pair this computer from the button below.";
+                case "settings.session.login_method.both" -> "With Google or with your email and password: either works.";
+                case "settings.session.devices.pair_this" -> "Pair this computer";
+                case "settings.session.devices.pair_this.need_pin.title" -> "Set a session PIN first";
+                case "settings.session.devices.pair_this.need_pin.body" -> "Pairing lets you open BENJAGEST with a PIN, and this account has none yet. Set it in \"Session PIN\" above and then pair the computer.";
+                case "settings.session.devices.pair_this.ask.title" -> "Pair this computer to open it with a PIN";
+                case "settings.session.devices.pair_this.ask.prompt" -> "Name for this computer (for example: office desktop)";
+                case "settings.session.devices.pair_this.ok.title" -> "Computer paired";
+                case "settings.session.devices.pair_this.ok.body" -> "Next time you open BENJAGEST it will ask for your PIN — the same one as the lock screen. You can still sign in with email or Google from the link at the bottom.";
+                case "settings.session.devices.pair_this.fail.title" -> "Could not pair this computer";
+                case "settings.session.devices.pair_this.fail.body" -> "Nothing was changed. Check that the service is running and try again.";
             case "settings.session.devices.hint" -> "Computers paired to enter with PIN. Max 5. If you hit the limit, revoke one you no longer use to pair a new one.";
             case "settings.session.devices.empty" -> "No paired devices.";
             case "settings.session.devices.last_seen" -> "last seen:";
@@ -3767,6 +3782,21 @@ public final class I18n {
             case "settings.session.pin.title" -> "PIN de sesión";
             case "settings.session.pin.hint" -> "PIN numérico (4–8 dígitos) usado solo para desbloquear tras el auto-bloqueo. Distinto del PIN de vinculación de equipo en modo multi-puesto.";
             case "settings.session.devices.title" -> "Equipos vinculados (multi-puesto)";
+            // PIN-PAIR-SESSION
+            case "settings.session.login_method.title" -> "Cómo entras";
+            case "settings.session.login_method.unknown" -> "Comprobando con qué entra esta cuenta...";
+            case "settings.session.login_method.password" -> "Con tu email y contraseña.";
+            case "settings.session.login_method.google" -> "Con Google. Esta cuenta no tiene contraseña, así que la pantalla de emparejar del arranque no te sirve — empareja este equipo con el botón de abajo.";
+            case "settings.session.login_method.both" -> "Con Google o con tu email y contraseña: te vale cualquiera de los dos.";
+            case "settings.session.devices.pair_this" -> "Emparejar este equipo";
+            case "settings.session.devices.pair_this.need_pin.title" -> "Define antes un PIN de sesión";
+            case "settings.session.devices.pair_this.need_pin.body" -> "Emparejar sirve para abrir BENJAGEST con un PIN, y esta cuenta todavía no tiene ninguno. Defínelo arriba en \"PIN de sesión\" y luego empareja el equipo.";
+            case "settings.session.devices.pair_this.ask.title" -> "Emparejar este equipo para abrirlo con PIN";
+            case "settings.session.devices.pair_this.ask.prompt" -> "Nombre de este equipo (por ejemplo: sobremesa del despacho)";
+            case "settings.session.devices.pair_this.ok.title" -> "Equipo emparejado";
+            case "settings.session.devices.pair_this.ok.body" -> "La próxima vez que abras BENJAGEST te pedirá el PIN — el mismo del bloqueo de pantalla. Si prefieres, abajo sigue el enlace para entrar con email o con Google.";
+            case "settings.session.devices.pair_this.fail.title" -> "No se pudo emparejar este equipo";
+            case "settings.session.devices.pair_this.fail.body" -> "No se ha cambiado nada. Comprueba que el servicio está arrancado y vuelve a intentarlo.";
             case "settings.session.devices.hint" -> "Equipos emparejados para entrar con PIN. Máximo 5. Si llegas al límite, revoca uno que ya no uses para poder vincular uno nuevo.";
             case "settings.session.devices.empty" -> "No hay equipos vinculados.";
             case "settings.session.devices.last_seen" -> "último acceso:";
