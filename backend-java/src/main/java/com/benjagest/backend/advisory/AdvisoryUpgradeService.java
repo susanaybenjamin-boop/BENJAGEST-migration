@@ -106,21 +106,29 @@ public class AdvisoryUpgradeService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "ALREADY_ADVISORY");
         }
 
-        activateAdvisoryModules(companyId);
+        List<String> activados = activateAdvisoryModules(companyId);
         ensureSelfLink(companyId);
 
         auditService.recordGeneric(companyId, user.userId(), "COMPANY_UPGRADED_TO_ADVISORY",
                 "company", companyId, "OK", null);
 
-        return new UpgradeResult(companyId, "ADVISORY", ADVISORY_MODULES);
+        return new UpgradeResult(companyId, "ADVISORY", activados);
     }
 
     /**
      * Enciende los modulos de asesoria. ADITIVO: nunca apaga nada de lo que el
      * empresario ya tuviera activo (anti-objetivo del diseno).
+     *
+     * <p>Devuelve los que quedan activos DE VERDAD, releidos de la BD. No vale
+     * devolver la lista fija: si un slug desaparece del catalogo o queda
+     * {@code active_in_catalog = FALSE}, el INSERT no mete fila y la respuesta
+     * diria que si — justo el 403 de la cartera volviendo en silencio.
      */
-    private void activateAdvisoryModules(String companyId) {
+    private List<String> activateAdvisoryModules(String companyId) {
         for (String slug : ADVISORY_MODULES) {
+            // activated_by va NULL a proposito: la columna tiene clave ajena a
+            // user_accounts y aqui no aporta nada que no diga ya el evento de
+            // auditoria COMPANY_UPGRADED_TO_ADVISORY, que si lleva el usuario.
             jdbc.update("""
                     INSERT INTO company_modules (id, company_id, module_id, active,
                                                  activated_at, activated_by)
@@ -132,6 +140,20 @@ public class AdvisoryUpgradeService {
                                             deactivated_by = NULL
                     """, companyId, slug);
         }
+        // El IN se arma desde la propia constante para que no pueda quedar
+        // desalineado con la lista que acabamos de insertar.
+        String marcas = String.join(",", java.util.Collections.nCopies(ADVISORY_MODULES.size(), "?"));
+        Object[] args = new Object[ADVISORY_MODULES.size() + 1];
+        args[0] = companyId;
+        for (int i = 0; i < ADVISORY_MODULES.size(); i++) args[i + 1] = ADVISORY_MODULES.get(i);
+        return jdbc.query("""
+                SELECT m.slug
+                  FROM company_modules cm
+                  JOIN module_catalog m ON m.id = cm.module_id
+                 WHERE cm.company_id = ? AND cm.active = TRUE
+                   AND m.slug IN (""" + marcas + """
+                 ) ORDER BY m.slug
+                """, (rs, n) -> rs.getString("slug"), args);
     }
 
     /**

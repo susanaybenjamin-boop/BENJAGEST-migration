@@ -1187,7 +1187,7 @@ public final class I18n {
                 case "settings.company.upgrade.error.title" -> "Could not convert the account";
                 case "settings.company.upgrade.error.linked" -> "This company is linked to an accounting firm. Unlink it first (Settings -> My accounting firm): as a firm it would lose the Communication module with your advisor.";
                 case "settings.company.upgrade.error.already" -> "This account is already an accounting firm. Close and open BENJAGEST to see the accounting-firm menu.";
-                case "settings.company.upgrade.error.generic" -> "The conversion did not go through and nothing was changed. Try again; if it keeps failing, check that the backend is running.";
+                case "settings.company.upgrade.error.generic" -> "The conversion could not be confirmed. Close and reopen BENJAGEST to see where it stands: if you come in as an accounting firm, it went through; if you are still in business mode, nothing changed and you can try again (check that the service is running).";
                 case "settings.company.section.general" -> "General data";
                 case "settings.company.section.address" -> "Postal address";
                 case "settings.company.section.billing" -> "Billing data";
@@ -2505,7 +2505,7 @@ public final class I18n {
             case "settings.company.upgrade.error.title" -> "No se pudo convertir la cuenta";
             case "settings.company.upgrade.error.linked" -> "Esta empresa esta vinculada a una asesoria. Desvinculala primero (Configuracion -> Mi asesoria): como asesoria perderia el modulo Comunicacion con tu gestor.";
             case "settings.company.upgrade.error.already" -> "Esta cuenta ya es una asesoria. Cierra y abre BENJAGEST para ver el menu de asesoria.";
-            case "settings.company.upgrade.error.generic" -> "La conversion no se hizo y no se ha cambiado nada. Vuelve a intentarlo; si sigue fallando, comprueba que el backend esta arrancado.";
+            case "settings.company.upgrade.error.generic" -> "No se pudo confirmar la conversion. Cierra y vuelve a abrir BENJAGEST para ver como quedo: si entras en modo asesoria, se hizo; si sigues en modo empresario, no se cambio nada y puedes volver a intentarlo (comprueba que el servicio esta arrancado).";
             case "settings.company.section.general" -> "Datos generales";
             case "settings.company.section.address" -> "Direccion postal";
             case "settings.company.section.billing" -> "Datos de facturacion";

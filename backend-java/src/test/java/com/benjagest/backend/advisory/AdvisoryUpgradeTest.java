@@ -1,7 +1,9 @@
 package com.benjagest.backend.advisory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ch.vorburger.mariadb4j.DB;
 import ch.vorburger.mariadb4j.DBConfigurationBuilder;
@@ -114,6 +116,29 @@ class AdvisoryUpgradeTest {
         assertEquals(1, filasDeModulo(company, "tax"));
         assertEquals(1, moduloActivo(company, "tax"));
         assertEquals(0, filasConMarcaDeApagado(company, "tax"));
+    }
+
+    /**
+     * La respuesta tiene que decir lo que se activo DE VERDAD, no la lista fija.
+     * Si un slug deja de estar en el catalogo (renombrado, retirado), el INSERT
+     * no mete ninguna fila y hasta ahora la respuesta seguia diciendo que si: el
+     * 403 de la cartera volveria sin que nadie se enterase.
+     */
+    @Test
+    void laRespuestaNoCuentaComoActivadoUnModuloQueNoSeActivo() {
+        String company = empresaCliente("Catalogo Raro SL");
+        jdbc.update("UPDATE module_catalog SET active_in_catalog = FALSE WHERE slug = 'team'");
+        try {
+            AdvisoryUpgradeService.UpgradeResult result =
+                    servicioPara(company).upgradeActiveCompany();
+
+            assertEquals(0, moduloActivo(company, "team"));
+            assertFalse(result.activatedModules().contains("team"),
+                    "no se activo 'team', asi que no puede venir en la respuesta");
+            assertTrue(result.activatedModules().contains("advisory"));
+        } finally {
+            jdbc.update("UPDATE module_catalog SET active_in_catalog = TRUE WHERE slug = 'team'");
+        }
     }
 
     /** Anti-objetivo: nada de datos se mueve — mismo company_id. */
